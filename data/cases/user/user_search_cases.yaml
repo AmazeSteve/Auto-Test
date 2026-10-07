@@ -1,0 +1,104 @@
+# ============================================================
+# 用户标签搜索
+#
+# 数据来源：
+# WB_USER_REF_003
+#   ↓
+# 提取 first_user_tag_name
+#   ↓
+# 使用真实存在的标签名称进行搜索
+# ============================================================
+- id: WB_USER_SEARCH_001
+  enabled: true
+  order: 720
+  endpoint: EP_USER_TAG_COMMON_LIST
+
+  depends_on:
+    - WB_USER_REF_003
+
+  priority: P1
+  owner: Rey
+  case_type: api
+  name: 用户标签搜索-按真实标签名称查询
+
+  tags:
+    - readonly
+    - search
+    - user-search
+    - dependency
+  params:
+    pageNo: 1
+    pageSize: 10
+    text: "{{first_user_tag_name}}"
+    pdate: $timestamp_ms
+  validate:
+    - type: status_code
+      expected: 200
+    - type: pagination
+      total: $.total
+      total_page: $.totalPage
+      page: $.page
+      page_size: $.pageSize
+      rows: $.rows
+
+      expected_page: 1
+      expected_page_size: 10
+
+      check_total_page: true
+      strict_rows: true
+
+    - type: json_path_not_empty
+      expression: $.rows
+
+    - type: list_field_contains
+      source: $.rows
+      field: ut_name
+      expected: "{{first_user_tag_name}}"
+      match: all
+
+- id: WB_USER_SEARCH_002
+  enabled: true
+  order: 721
+  endpoint: EP_USER_TAG_COMMON_LIST
+
+  priority: P2
+  owner: Rey
+  case_type: api
+  name: 用户标签搜索-不存在关键字行为探测
+
+  tags:
+    - readonly
+    - search
+    - user-search-negative
+
+  params:
+    pageNo: 1
+    pageSize: 10
+    text: "__AUTO_NOT_EXISTS_20260818_1048__"
+    pdate: $timestamp_ms
+
+  validate:
+    - type: status_code
+      expected: 200
+
+    - type: pagination
+      total: $.total
+      total_page: $.totalPage
+      page: $.page
+      page_size: $.pageSize
+      rows: $.rows
+
+      expected_page: 1
+      expected_page_size: 10
+
+      check_total_page: true
+      strict_rows: true
+
+    - type: json_path_equals
+      expression: $.total
+      expected: 0
+
+    - type: json_path_equals
+      expression: $.rows
+      expected: [ ]
+

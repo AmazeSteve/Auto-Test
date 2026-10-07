@@ -1,0 +1,176 @@
+- id: WB_USER_REF_001
+  enabled: true
+  order: 700
+  endpoint: EP_USER_GRADE_TREE
+
+  priority: P2
+  owner: Rey
+  case_type: api
+  name: 查询用户职级树
+
+  tags:
+    - readonly
+    - user-reference
+  params:
+    pdate: $timestamp_ms
+
+  validate:
+    - type: status_code
+      expected: 200
+
+    - type: json_path_equals
+      expression: $.code
+      expected: 200
+
+    - type: json_path_equals
+      expression: $.message
+      expected: success
+
+    - type: json_path_exists
+      expression: $.data.ugr_display_bil
+
+    - type: json_path_exists
+      expression: $.data.children
+
+    - type: json_path_type
+      expression: $.data.children
+      expected_type: list
+
+    - type: json_path_not_empty
+      expression: $.data.children
+
+- id: WB_USER_REF_002
+  enabled: true
+  order: 701
+  endpoint: EP_USER_POSITION_TREE
+
+  priority: P2
+  owner: Rey
+  case_type: api
+  name: 查询用户岗位树
+
+  tags:
+    - readonly
+    - user-reference
+
+  params:
+    pdate: $timestamp_ms
+
+  validate:
+    - type: status_code
+      expected: 200
+
+    - type: json_path_equals
+      expression: $.code
+      expected: 200
+
+    - type: json_path_equals
+      expression: $.message
+      expected: success
+
+    - type: json_path_exists
+      expression: $.data.upt_title
+
+    - type: json_path_exists
+      expression: $.data.children
+
+    - type: json_path_type
+      expression: $.data.children
+      expected_type: list
+
+    - type: json_path_not_empty
+      expression: $.data.children
+
+- id: WB_USER_REF_003
+  enabled: true
+  order: 702
+  endpoint: EP_USER_TAG_COMMON_LIST
+
+  priority: P2
+  owner: Rey
+  case_type: api
+  name: 查询用户标签列表
+
+  tags:
+    - readonly
+    - user-reference
+
+  params:
+    pageNo: 1
+    pageSize: 10
+    text: ""
+    pdate: $timestamp_ms
+
+  validate:
+    - type: status_code
+      expected: 200
+
+    - type: pagination
+      total: $.total
+      total_page: $.totalPage
+      page: $.page
+      page_size: $.pageSize
+      rows: $.rows
+
+      expected_page: 1
+      expected_page_size: 10
+
+      check_total_page: true
+      strict_rows: true
+  extract:
+    first_user_tag_name:
+      type: json_path
+      expression: $.rows[0].ut_name
+
+    first_user_tag_code:
+      type: json_path
+      expression: $.rows[0].ut_code
+
+    first_user_tag_id:
+      type: json_path
+      expression: $.rows[0].ut_id
+
+- id: WB_USER_REF_004
+  enabled: true
+  order: 703
+  endpoint: EP_USER_GROUP_ANCESTORS
+
+  depends_on:
+    - WB_USER_GROUP_001
+
+  priority: P2
+  owner: Rey
+  case_type: api
+  name: 查询目标用户组祖先信息
+
+  tags:
+    - readonly
+    - dependency
+    - user-reference
+
+  data:
+    usg_ent_id: "{{target_usg_ent_id}}"
+    type: "1"
+    pdate: $timestamp_ms
+
+  validate:
+    - type: status_code
+      expected: 200
+
+    - type: json_path_equals
+      expression: $.code
+      expected: 200
+
+    - type: json_path_equals
+      expression: $.message
+      expected: success
+
+    - type: json_path_exists
+      expression: $.data
+
+    - type: json_path_type
+      expression: $.data
+      expected_type: list
+
+    - type: json_path_not_empty
+      expression: $.data

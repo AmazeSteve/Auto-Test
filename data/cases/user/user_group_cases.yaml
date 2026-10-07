@@ -1,0 +1,121 @@
+- id: WB_USER_GROUP_001
+  enabled: true
+  order: 10   # 执行顺序（升序），数字越小越先执行
+  endpoint: EP_USER_GROUP_ROOT
+  priority: P1
+  owner: Rey
+  case_type: api
+  name: 查询首级用户组
+  tags:
+    - smoke
+    - readonly
+  params:
+    pdate: $timestamp_ms
+  validate:
+    - type: status_code
+      expected: 200
+    - type: json_path_exists
+      expression: $.data.userGroupList
+    - type: json_path_type
+      expression: $.data.userGroupList  # JSONPath 表达式，验证该路径存在
+      expected: list
+  extract:
+    user_grp_list: # 提取所有用户组
+      type: json_path
+      expression: $.data.userGroupList
+    first_usg_ent_id: #第一个用户组加密ID
+      type: json_path
+      expression: $.data.userGroupList[0].usg_ent_id
+    target_usg_ent_id: #目标用户组
+      type: find_in_list
+      source: $.data.userGroupList
+      where:
+        field: usg_code
+        equals: ee-Rey用户组
+      get: usg_ent_id
+
+- id: WB_USER_GROUP_002
+  enabled: true
+  order: 20
+  endpoint: EP_USER_GROUP_TREE
+  priority: P1
+  owner: Rey
+  case_type: api
+  name: 查询用户组树
+  tags:
+    - readonly
+  params:
+    pdate: $timestamp_ms
+  validate:
+    - type: status_code
+      expected: 200 # 期望值
+    - type: json_path_exists #定位表达式
+      expression: $.data
+
+- id: WB_USER_GROUP_003 #查询指定用户组详情（依赖 WB_USER_GROUP_001 提取的 target_usg_ent_id）
+  enabled: true
+  order: 30
+  endpoint: EP_USER_GROUP_DETAIL
+  depends_on:
+    - WB_USER_GROUP_001  # 依赖的用例ID列表，执行前会检查这些用例是否已通过
+  priority: P1
+  owner: Rey
+  case_type: api
+  name: 查询指定用户组详情
+  tags:
+    - readonly
+    - dependency #新增 dependency 标签，标识该用例依赖前置用例
+  params:
+    pdate: $timestamp_ms
+  validate:
+      - type: status_code
+        expected: 200
+      - type: json_path_exists
+        expression: $.data
+
+- id: WB_USER_GROUP_004 #查询指定用户组下用户列表（依赖 WB_USER_GROUP_001）
+  enabled: true
+  order: 40
+  endpoint: EP_USER_GROUP_USERS
+  depends_on:
+    - WB_USER_GROUP_001
+  priority: P1
+  owner: Rey
+  case_type: api
+  name: 查询指定用户组下用户列表
+  tags:
+    - readonly
+    - dependency
+  params:
+    pageNum: 1
+    pageSize: 10
+    sortField: usr_upd_date
+    sortMode: desc
+    pdate: $timestamp_ms
+  validate:
+      - type: status_code
+        expected: 200
+      - type: json_path_exists
+        expression: $.data
+  extract:
+    first_usr_ent_id:
+      type: json_path
+      expression: $.data.list[0].usr_ent_id_encrypt
+    target_usr_ent_id:
+      type: find_in_list
+      source: $.data.list
+      where:
+        field: usr_ste_usr_id
+#        equals: ee-Rey-15
+        equals: "{{$data.test_username}}"
+      get: usr_ent_id_encrypt
+    target_usr_eip_id:
+      type: find_in_list
+      source: $.data.list
+      where:
+        field: usr_ste_usr_id
+        equals: "{{$data.test_username}}"
+      get: usr_eip_id
+
+
+

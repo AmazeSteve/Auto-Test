@@ -1,0 +1,1 @@
+{'url': 'https://beboxuat.cyberwisdom.com.hk/app/user/login/v3', 'method': 'POST', 'params': {'developer': 'PC'}, 'headers': {}, 'json': {'eipCode': '', 'usrSteUsrId': 'admin', 'userPassword': 'Q3liZXIyMDI1Q1dO', 'loginModeV2': 'PC', 'curLan': 'zh-cn', 'qrcodeType': '', 'qrcodeItmType': '', 'qrcodeencItmId': ''}, 'data': {}}

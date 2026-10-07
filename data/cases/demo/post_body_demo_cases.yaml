@@ -1,0 +1,47 @@
+# ================================================================
+# POST 请求体示例用例（演示 json 和 data 两种方式）
+# 注意：默认 enabled: false，需要时改为 true 即可运行
+# ================================================================
+
+# 示例1：POST JSON 请求体（最常用）
+- id: DEMO_POST_JSON_001
+  enabled: false                    # 默认禁用，仅供演示
+  order: 9001                       # 排在最后（不影响正常用例）
+  priority: P3
+  owner: Rey
+  case_type: api
+  name: POST JSON 示例
+  module: Demo/请求体
+  host: Host-be
+  method: POST
+  path: /demo/json
+  auth: admin
+  tags:
+    - demo
+  json:                             # 使用 json 字段，自动设置 Content-Type: application/json
+    name: test
+    timestamp: $timestamp_ms        # 支持变量解析
+  validate:
+    - type: status_code
+      expected: 200
+
+# 示例2：POST FORM 请求体（application/x-www-form-urlencoded）
+- id: DEMO_POST_FORM_001
+  enabled: false
+  order: 9002
+  priority: P3
+  owner: Rey
+  case_type: api
+  name: POST FORM 示例
+  module: Demo/请求体
+  host: Host-be
+  method: POST
+  path: /demo/form
+  auth: admin
+  headers:                          # 需要显式指定 Content-Type
+    Content-Type: application/x-www-form-urlencoded
+  data:                             # 使用 data 字段（表单格式）
+    name: test
+  validate:
+    - type: status_code
+      expected: 200

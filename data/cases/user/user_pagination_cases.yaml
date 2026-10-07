@@ -1,0 +1,172 @@
+# ============================================================
+# 用户标签分页场景
+# Endpoint:
+#   EP_USER_TAG_COMMON_LIST
+#
+# 目标：
+#   验证同一个 Endpoint 在不同分页参数下的分页契约
+# ============================================================
+
+
+# ------------------------------------------------------------
+# Case 1: 最小分页大小
+# ------------------------------------------------------------
+- id: WB_USER_PAGE_001
+  enabled: true
+  order: 710
+  endpoint: EP_USER_TAG_COMMON_LIST
+
+  priority: P2
+  owner: Rey
+  case_type: api
+  name: 用户标签分页-pageSize为1
+
+  tags:
+    - readonly
+    - pagination
+    - user-pagination
+
+  params:
+    pageNo: 1
+    pageSize: 1
+    text: ""
+    pdate: $timestamp_ms
+
+  validate:
+    - type: status_code
+      expected: 200
+
+    - type: pagination
+      total: $.total
+      total_page: $.totalPage
+      page: $.page
+      page_size: $.pageSize
+      rows: $.rows
+
+      expected_page: 1
+      expected_page_size: 1
+      check_total_page: true
+      strict_rows: true
+
+
+# ------------------------------------------------------------
+# Case 2: 常规分页大小
+# ------------------------------------------------------------
+- id: WB_USER_PAGE_002
+  enabled: true
+  order: 711
+  endpoint: EP_USER_TAG_COMMON_LIST
+
+  priority: P2
+  owner: Rey
+  case_type: api
+  name: 用户标签分页-pageSize为5
+
+  tags:
+    - readonly
+    - pagination
+    - user-pagination
+
+  params:
+    pageNo: 1
+    pageSize: 5
+    text: ""
+    pdate: $timestamp_ms
+
+  validate:
+    - type: status_code
+      expected: 200
+
+    - type: pagination
+      total: $.total
+      total_page: $.totalPage
+      page: $.page
+      page_size: $.pageSize
+      rows: $.rows
+
+      expected_page: 1
+      expected_page_size: 5
+      check_total_page: true
+      strict_rows: true
+
+
+# ------------------------------------------------------------
+# Case 3: 较大分页大小
+# ------------------------------------------------------------
+- id: WB_USER_PAGE_003
+  enabled: true
+  order: 712
+  endpoint: EP_USER_TAG_COMMON_LIST
+
+  priority: P2
+  owner: Rey
+  case_type: api
+  name: 用户标签分页-pageSize为20
+
+  tags:
+    - readonly
+    - pagination
+    - user-pagination
+
+  params:
+    pageNo: 1
+    pageSize: 20
+    text: ""
+    pdate: $timestamp_ms
+
+  validate:
+    - type: status_code
+      expected: 200
+
+    - type: pagination
+      total: $.total
+      total_page: $.totalPage
+      page: $.page
+      page_size: $.pageSize
+      rows: $.rows
+
+      expected_page: 1
+      expected_page_size: 20
+      check_total_page: true
+      strict_rows: true
+
+
+# ------------------------------------------------------------
+# Case 4: 第二页
+# ------------------------------------------------------------
+- id: WB_USER_PAGE_004
+  enabled: true
+  order: 713
+  endpoint: EP_USER_TAG_COMMON_LIST
+
+  priority: P2
+  owner: Rey
+  case_type: api
+  name: 用户标签分页-查询第二页
+
+  tags:
+    - readonly
+    - pagination
+    - user-pagination
+
+  params:
+    pageNo: 2
+    pageSize: 10
+    text: ""
+    pdate: $timestamp_ms
+
+  validate:
+    - type: status_code
+      expected: 200
+
+    - type: pagination
+      total: $.total
+      total_page: $.totalPage
+      page: $.page
+      page_size: $.pageSize
+      rows: $.rows
+
+      expected_page: 2
+      expected_page_size: 10
+      check_total_page: true
+      strict_rows: true

@@ -1,0 +1,126 @@
+# ============================================================
+# 用户组
+# ============================================================
+- id: EP_USER_GROUP_ROOT
+  name: 查询首级用户组
+  module: 用户管理/用户组
+  host: Host-be
+  method: GET
+  path: /app/v2/admin/user/user_group/0
+  auth: admin
+
+- id: EP_USER_GROUP_TREE
+  name: 查询用户组树
+  module: 用户管理/用户组
+  host: Host-be
+  method: GET
+  path: /app/v2/admin/user/user_group/plugin/tree
+  auth: admin
+
+- id: EP_USER_GROUP_DETAIL
+  name: 查询指定用户组详情
+  module: 用户管理/用户组
+  host: Host-be
+  method: GET
+  path: /app/v2/admin/user/user_group/detail/{{target_usg_ent_id}}
+  auth: admin
+
+- id: EP_USER_GROUP_USERS
+  name: 查询指定用户组下用户列表
+  module: 用户管理/用户组
+  host: Host-be
+  method: GET
+  path: /app/v2/admin/user/user_group/user/{{target_usg_ent_id}} # 获取目标用户组的信息
+  auth: admin
+
+# ============================================================
+# 用户信息
+# ============================================================
+
+- id: EP_USER_PREVIEW
+  name: 查询用户详情
+  module: 用户管理/用户信息
+  host: Host-be
+  method: GET
+  path: /app/v2/admin/user/user_manager/preview/{{first_usr_ent_id}}
+  auth: admin
+
+
+- id: EP_USER_GROUP_RELATION
+  name: 查询用户关联用户组
+  module: 用户管理/用户信息
+  host: Host-be
+  method: GET
+  path: /app/v2/admin/user/user_manager/group/{{target_usr_ent_id}}
+  auth: admin
+
+- id: EP_USER_ROLE_LIST
+  name: 用户角色权限列表
+  module: 用户管理/用户信息
+  host: Host-be
+  method: POST
+  path: /app/v2/admin/user/list_current_ac_role
+  auth: admin
+  headers:
+    Content-Type: application/x-www-form-urlencoded
+
+- id: EP_USER_GET_FORM
+  name: 获取用户表单信息
+  module: 用户管理/用户信息
+  host: Host-be
+  method: POST
+  path: /app/v2/admin/user/get_user_excel_form
+  auth: admin
+  headers:
+    Content-Type: application/x-www-form-urlencoded
+
+
+# ============================================================
+# 用户修改
+# ============================================================
+- id: EP_USER_UPDATE
+  name: 修改用户
+  module: 用户管理/用户信息
+  host: Host-be
+  method: POST
+  path: /app/v2/admin/user/upd_user
+  auth: admin
+  headers:
+    Content-Type: application/json
+  destructive: true
+# ============================================================
+# 用户基础资料查询
+# ============================================================
+- id: EP_USER_GRADE_TREE
+  name: 查询用户职级树
+  module: 用户管理/用户基础资料
+  host: Host-be
+  method: GET
+  path: /app/v2/admin/user/user_grade/plugin/tree
+  auth: admin
+
+- id: EP_USER_POSITION_TREE
+  name: 查询用户岗位树
+  module: 用户管理/用户基础资料
+  host: Host-be
+  method: GET
+  path: /app/v2/admin/user/user_position/plugin/tree
+  auth: admin
+
+- id: EP_USER_TAG_COMMON_LIST
+  name: 查询用户标签列表
+  module: 用户管理/用户基础资料
+  host: Host-be
+  method: GET
+  path: /app/v2/admin/usertag/commonList
+  auth: admin
+
+- id: EP_USER_GROUP_ANCESTORS
+  name: 查询用户组祖先信息
+  module: 用户管理/用户基础资料
+  host: Host-be
+  method: POST
+  path: /app/v2/admin/user/user_group/ancestors
+  auth: admin
+  headers:
+    Content-Type: application/x-www-form-urlencoded

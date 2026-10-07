@@ -1,0 +1,17 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+.env
+.env.*
+!.env.example
+
+configs/env.local.yaml
+
+reports/allure-results/*
+reports/allure-report/*
+logs/*
+
+.idea/
+.vscode/

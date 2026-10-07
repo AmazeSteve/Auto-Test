@@ -1,0 +1,254 @@
+- id: WB_USER_DESTRUCTIVE_DEMO_001 #查询指定用户组下用户列表（依赖 WB_USER_GROUP_004）
+  enabled: true
+  order: 900
+  endpoint: EP_USER_UPDATE
+  depends_on:
+    - WB_USER_004
+  priority: P1
+  owner: Rey
+  case_type: api
+  name: 危险接口保护示例-修改用户
+  tags:
+    - destructive
+    - update
+  lifecycle:
+    verify: WB_USER_DESTRUCTIVE_VERIFY_001
+    rollback: WB_USER_DESTRUCTIVE_ROLLBACK_001
+    verify_rollback: WB_USER_DESTRUCTIVE_VERIFY_ROLLBACK_001
+  effect:
+    type: update
+    require_change: true
+    target:
+      resource: user
+      fields:
+        - usr_display_bil
+        - userGroupId
+        - gradeId
+    capture:
+      enabled: true
+      # logical field -> Capture payload JSONPath
+      fields:
+        usr_display_bil: $.data.usr_display_bil
+        userGroupId: $.data.userGroupId
+        gradeId: $.data.gradeId
+      before:
+        endpoint: EP_USER_GET_FORM
+        data:
+          pdate: $timestamp_ms
+          usr_ent_id: "{{target_usr_ent_id}}"
+        expected_status: 200
+        expected_code: 200
+      after:
+        endpoint: EP_USER_GET_FORM
+        data:
+          pdate: $timestamp_ms
+          usr_ent_id: "{{target_usr_ent_id}}"
+        expected_status: 200
+        expected_code: 200
+  risk_level: update
+  json:
+    line: 0
+    usr_ent_id: "{{current_user_ent_id}}"
+#    usr_ste_usr_id: "ee-Rey-15"
+    usr_ste_usr_id: "{{original_usr_ste_usr_id}}"
+    usr_pwd: ~
+#    usr_display_bil: "Rey-15-full-upd"
+    usr_display_bil: "{{$data.unique_display_name}}"
+    usr_nickname: ""
+    usr_gender: ""
+    usr_bday: ~
+    usr_email: ""
+    usr_tel_1: ""
+    usr_fax_1: ""
+    usr_extra_2: ""
+    urx_extra_41: ""
+    urx_extra_42: ""
+    usr_job_title: ""
+    usr_join_datetime: ~
+    eip_code: "ee"
+    urx_extra_44: ""
+    urx_extra_45: ""
+    userGroupCode: ~
+    usgDisplayBil: "{{original_usg_display_bil}}"
+    userGroupId: "{{original_user_group_id}}"
+    gradeCode: ~
+    ugrDisplayBil: "{{original_ugr_display_bil}}"
+    gradeId: "{{original_grade_id}}"
+    positionCode: ~
+    positionTitle: ~
+    positionId: ~
+    tag: ~
+    tagName: ""
+    tagId: ~
+    userTagVOList: [ ]
+    roleCode: "NLRN_1,TADM_1"
+    directLeader: ~
+    directLeaderId: ~
+    directLeaderCode: ~
+    directLeaderDisplayBil: ~
+    leaderList: ~
+    highestApprovalUserGroupCode: ~
+    highestApprovalUsgDisplayBil: ~
+    highestApprovalUserGroupId: ~
+    subordinateDepartment: ~
+    subordinateDepartmentUsgDisplayBil: ~
+    subordinateDepartmentId: ~
+    ssoConnectionEnable: "No"
+    usrSource: "wizBank"
+    usr_pwd_need_change_ind: 0
+    curLan: "zh-cn"
+    head_portrait_path: ~
+    urx_extra_send_email: ~
+    noUpdLyndon: false
+    eip_id: 50
+    pdate: "$timestamp_ms"
+  validate:
+      - type: status_code
+        expected: 200
+#增加修改后验证用例
+- id: WB_USER_DESTRUCTIVE_VERIFY_001
+  enabled: true
+  order: 901
+  endpoint: EP_USER_GET_FORM
+  depends_on:
+    - WB_USER_DESTRUCTIVE_DEMO_001
+  priority: P1
+  owner: Rey
+  case_type: api
+  name: 危险接口验证-用户全名已修改
+
+  tags:
+    - destructive
+    - update
+    - verify
+  risk_level: update
+
+  data:
+    pdate: $timestamp_ms
+    usr_ent_id: "{{target_usr_ent_id}}"
+  validate:
+    - type: status_code
+      expected: 200
+    - type: json_path_equals
+      expression: $.data.usr_display_bil
+      expected: "{{$data.unique_display_name}}"
+    - type: json_path_equals
+      expression: $.data.userGroupId
+      expected: "{{original_user_group_id}}"
+    - type: json_path_equals
+      expression: $.data.gradeId
+      expected: "{{original_grade_id}}"
+#增加恢复用例
+- id: WB_USER_DESTRUCTIVE_ROLLBACK_001
+  enabled: true
+  order: 902
+  endpoint: EP_USER_UPDATE
+  depends_on:
+    - WB_USER_DESTRUCTIVE_DEMO_001
+  priority: P1
+  owner: Rey
+  case_type: api
+  name: 危险接口回滚-恢复用户全名显示名称
+
+  tags:
+    - destructive
+    - rollback
+  risk_level: reset
+  # 显式恢复映射。恢复值只允许来自 Effect Snapshot 的 before 状态。
+  restore_mapping:
+    source_effect: WB_USER_DESTRUCTIVE_DEMO_001
+    fields:
+      json.usr_display_bil: before.usr_display_bil
+      json.userGroupId: before.userGroupId
+      json.gradeId: before.gradeId
+  json:
+    line: 0
+    usr_ent_id: "{{current_user_ent_id}}"
+#    usr_ste_usr_id: "ee-Rey-15"
+    usr_ste_usr_id: "{{original_usr_ste_usr_id}}"
+    usr_pwd: ~
+#    usr_display_bil: "{{original_usr_display_bil}}"
+    usr_nickname: ""
+    usr_gender: ""
+    usr_bday: ~
+    usr_email: ""
+    usr_tel_1: ""
+    usr_fax_1: ""
+    usr_extra_2: ""
+    urx_extra_41: ""
+    urx_extra_42: ""
+    usr_job_title: ""
+    usr_join_datetime: ~
+    eip_code: "ee"
+    urx_extra_44: ""
+    urx_extra_45: ""
+    userGroupCode: ~
+    usgDisplayBil: "{{original_usg_display_bil}}"
+#    userGroupId: "b32ee16a6911e9330f750ced6fb37c13"
+    gradeCode: ~
+    ugrDisplayBil: "{{original_ugr_display_bil}}"
+#    gradeId: "05406a734a572540d962c9609991d87a"
+    positionCode: ~
+    positionTitle: ~
+    positionId: ~
+    tag: ~
+    tagName: ""
+    tagId: ~
+    userTagVOList: []
+    roleCode: "NLRN_1,TADM_1"
+    directLeader: ~
+    directLeaderId: ~
+    directLeaderCode: ~
+    directLeaderDisplayBil: ~
+    leaderList: ~
+    highestApprovalUserGroupCode: ~
+    highestApprovalUsgDisplayBil: ~
+    highestApprovalUserGroupId: ~
+    subordinateDepartment: ~
+    subordinateDepartmentUsgDisplayBil: ~
+    subordinateDepartmentId: ~
+    ssoConnectionEnable: "No"
+    usrSource: "wizBank"
+    usr_pwd_need_change_ind: 0
+    curLan: "zh-cn"
+    head_portrait_path: ~
+    urx_extra_send_email: ~
+    noUpdLyndon: false
+    eip_id: 50
+    pdate: $timestamp_ms
+  validate:
+    - type: status_code
+      expected: 200
+#增加恢复后验证
+- id: WB_USER_DESTRUCTIVE_VERIFY_ROLLBACK_001
+  enabled: true
+  order: 903
+  endpoint: EP_USER_GET_FORM
+  depends_on:
+    - WB_USER_DESTRUCTIVE_ROLLBACK_001
+  priority: P1
+  owner: Rey
+  case_type: api
+  name: 危险接口验证-用户显示名称已恢复
+
+  tags:
+    - destructive
+    - rollback
+    - verify
+  risk_level: update
+
+  data:
+    pdate: $timestamp_ms
+    usr_ent_id: "{{target_usr_ent_id}}"
+  validate:
+    - type: status_code
+      expected: 200
+    - type: json_path_equals
+      expression: $.data.usr_display_bil
+      expected: "{{original_usr_display_bil}}"
+    - type: json_path_equals
+      expression: $.data.userGroupId
+      expected: "{{original_user_group_id}}"
+    - type: json_path_equals
+      expression: $.data.gradeId
+      expected: "{{original_grade_id}}"

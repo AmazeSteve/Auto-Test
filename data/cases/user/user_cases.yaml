@@ -1,0 +1,123 @@
+# 用例5：查询用户详情（依赖 WB_USER_GROUP_004 提取的 first_usr_ent_id）
+# 展示多层依赖链：WB_USER_GROUP_001 → WB_USER_GROUP_004 → WB_USER_001
+- id: WB_USER_001
+  enabled: true
+  order: 50
+  endpoint: EP_USER_PREVIEW
+  name: 查询用户详情
+  depends_on:
+    - WB_USER_GROUP_004
+  priority: P1
+  owner: Rey
+  case_type: api
+
+  tags:
+    - readonly
+    - dependency
+  params:
+    pdate: $timestamp_ms
+  validate:
+    - type: status_code
+      expected: 200
+    - type: json_path_exists
+      expression: $.data
+  extract:
+    user_info:
+      type: json_path
+      expression: $.data
+
+
+- id: WB_USER_002
+  enabled: true
+  order: 60
+  endpoint: EP_USER_GROUP_RELATION
+  depends_on:
+    - WB_USER_GROUP_004
+  priority: P1
+  owner: Rey
+  case_type: api
+  name: 查询用户关联用户组
+  tags:
+    - readonly
+    - dependency
+  params:
+    pdate: $timestamp_ms
+  validate:
+    - type: status_code
+      expected: 200
+    - type: json_path_exists
+      expression: $.data
+
+- id: WB_USER_003
+  enabled: true
+  order: 61
+  endpoint: EP_USER_ROLE_LIST
+  depends_on:
+    - WB_USER_GROUP_004
+  priority: P1
+  owner: Rey
+  case_type: api
+  name: 用户角色权限列表
+  data:
+    pdate: $timestamp_ms
+  tags:
+    - readonly
+    - dependency
+  validate:
+    - type: status_code
+      expected: 200
+    - type: json_path_exists
+      expression: $.data
+
+#endpoints = 接口定义
+#cases     = 用例数据、断言、提取、依赖
+
+- id: WB_USER_004
+  enabled: true
+  order: 62
+  endpoint: EP_USER_GET_FORM
+  depends_on:
+    - WB_USER_GROUP_004
+  priority: P1
+  owner: Rey
+  case_type: api
+  name: 获取用户表单信息
+  tags:
+    - readonly
+    - dependency
+  data:
+    pdate: $timestamp_ms
+    usr_ent_id: "{{target_usr_ent_id}}"
+  validate:
+    - type: status_code
+      expected: 200
+    - type: json_path_exists
+      expression: $.data
+  extract:
+    current_user_ent_id: # 非加密ID 即用户名
+      type: json_path
+      expression: $.data.usr_ent_id
+
+    original_usr_display_bil: # rollback 使用 用户全名
+      type: json_path
+      expression: $.data.usr_display_bil
+
+    original_usr_ste_usr_id: #rollback 使用 用户名
+      type: json_path
+      expression: $.data.usr_ste_usr_id
+
+    original_user_group_id:
+      type: json_path
+      expression: $.data.userGroupId
+
+    original_usg_display_bil:
+      type: json_path
+      expression: $.data.usgDisplayBil
+
+    original_grade_id:
+      type: json_path
+      expression: $.data.gradeId
+
+    original_ugr_display_bil:
+      type: json_path
+      expression: $.data.ugrDisplayBil

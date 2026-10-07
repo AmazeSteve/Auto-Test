@@ -1,0 +1,1 @@
+{'url': 'https://beboxuat.cyberwisdom.com.hk/app/v2/admin/user/user_group/0', 'method': 'GET', 'params': {'pdate': '1782915911078'}, 'headers': {'Cookie': 'SESSION=bb1f9b61-3fdd-44f8-8c9a-71b7fe6bdc7a; Path=/; Secure; HttpOnly'}, 'json': {}, 'data': {}}

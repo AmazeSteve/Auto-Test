@@ -1,0 +1,348 @@
+# v2.4.6A /upd_user Partial Update 契约实验。
+# 默认不会被主 YAML suite 加载；仅由 tests/test_04_user_update_contract.py 显式加载。
+# 实验写请求需要 --allow-destructive + --allow-contract-experiment + TEST_USERNAME。
+- id: WB_USER_UPDATE_CONTRACT_PARTIAL_001
+  enabled: true
+  order: 910
+  endpoint: EP_USER_UPDATE
+  depends_on:
+  - WB_USER_004
+  priority: P0
+  owner: Rey
+  case_type: api
+  name: 更新契约实验-最小Payload修改用户显示名称
+  tags:
+  - update_contract
+  - contract_experiment
+  contract_experiment: true
+  update_contract:
+    kind: partial_update
+    required_request_fields:
+    - usr_ent_id
+    - usr_display_bil
+    allowed_request_fields:
+    - usr_ent_id
+    - usr_display_bil
+    verify_restore_snapshot: true
+  lifecycle:
+    verify: WB_USER_UPDATE_CONTRACT_VERIFY_001
+    rollback: WB_USER_UPDATE_CONTRACT_ROLLBACK_001
+    verify_rollback: WB_USER_UPDATE_CONTRACT_VERIFY_ROLLBACK_001
+  effect:
+    type: update
+    require_change: true
+    diff_contract:
+      required:
+      - usr_display_bil
+      allowed:
+      - usr_display_bil
+    target:
+      resource: user
+      fields:
+      - usr_ste_usr_id
+      - usr_display_bil
+      - usr_nickname
+      - usr_gender
+      - usr_bday
+      - usr_email
+      - usr_tel_1
+      - usr_fax_1
+      - usr_extra_2
+      - urx_extra_41
+      - urx_extra_42
+      - usr_job_title
+      - usr_join_datetime
+      - eip_code
+      - urx_extra_44
+      - urx_extra_45
+      - userGroupCode
+      - usgDisplayBil
+      - userGroupId
+      - gradeCode
+      - ugrDisplayBil
+      - gradeId
+      - positionCode
+      - positionTitle
+      - positionId
+      - tag
+      - tagName
+      - tagId
+      - userTagVOList
+      - roleCode
+      - directLeader
+      - directLeaderId
+      - directLeaderCode
+      - directLeaderDisplayBil
+      - leaderList
+      - highestApprovalUserGroupCode
+      - highestApprovalUsgDisplayBil
+      - highestApprovalUserGroupId
+      - subordinateDepartment
+      - subordinateDepartmentUsgDisplayBil
+      - subordinateDepartmentId
+      - ssoConnectionEnable
+      - usrSource
+      - usr_pwd_need_change_ind
+      - curLan
+      - head_portrait_path
+      - urx_extra_send_email
+      - noUpdLyndon
+    capture:
+      enabled: true
+      fields:
+        usr_ste_usr_id: $.data.usr_ste_usr_id
+        usr_display_bil: $.data.usr_display_bil
+        usr_nickname: $.data.usr_nickname
+        usr_gender: $.data.usr_gender
+        usr_bday: $.data.usr_bday
+        usr_email: $.data.usr_email
+        usr_tel_1: $.data.usr_tel_1
+        usr_fax_1: $.data.usr_fax_1
+        usr_extra_2: $.data.usr_extra_2
+        urx_extra_41: $.data.urx_extra_41
+        urx_extra_42: $.data.urx_extra_42
+        usr_job_title: $.data.usr_job_title
+        usr_join_datetime: $.data.usr_join_datetime
+        eip_code: $.data.eip_code
+        urx_extra_44: $.data.urx_extra_44
+        urx_extra_45: $.data.urx_extra_45
+        userGroupCode: $.data.userGroupCode
+        usgDisplayBil: $.data.usgDisplayBil
+        userGroupId: $.data.userGroupId
+        gradeCode: $.data.gradeCode
+        ugrDisplayBil: $.data.ugrDisplayBil
+        gradeId: $.data.gradeId
+        positionCode: $.data.positionCode
+        positionTitle: $.data.positionTitle
+        positionId: $.data.positionId
+        tag: $.data.tag
+        tagName: $.data.tagName
+        tagId: $.data.tagId
+        userTagVOList: $.data.userTagVOList
+        roleCode: $.data.roleCode
+        directLeader: $.data.directLeader
+        directLeaderId: $.data.directLeaderId
+        directLeaderCode: $.data.directLeaderCode
+        directLeaderDisplayBil: $.data.directLeaderDisplayBil
+        leaderList: $.data.leaderList
+        highestApprovalUserGroupCode: $.data.highestApprovalUserGroupCode
+        highestApprovalUsgDisplayBil: $.data.highestApprovalUsgDisplayBil
+        highestApprovalUserGroupId: $.data.highestApprovalUserGroupId
+        subordinateDepartment: $.data.subordinateDepartment
+        subordinateDepartmentUsgDisplayBil: $.data.subordinateDepartmentUsgDisplayBil
+        subordinateDepartmentId: $.data.subordinateDepartmentId
+        ssoConnectionEnable: $.data.ssoConnectionEnable
+        usrSource: $.data.usrSource
+        usr_pwd_need_change_ind: $.data.usr_pwd_need_change_ind
+        curLan: $.data.curLan
+        head_portrait_path: $.data.head_portrait_path
+        urx_extra_send_email: $.data.urx_extra_send_email
+        noUpdLyndon: $.data.noUpdLyndon
+      before:
+        endpoint: EP_USER_GET_FORM
+        data:
+          pdate: $timestamp_ms
+          usr_ent_id: '{{target_usr_ent_id}}'
+        expected_status: 200
+        expected_code: 200
+      after:
+        endpoint: EP_USER_GET_FORM
+        data:
+          pdate: $timestamp_ms
+          usr_ent_id: '{{target_usr_ent_id}}'
+        expected_status: 200
+        expected_code: 200
+  risk_level: update
+  json:
+    usr_ent_id: '{{current_user_ent_id}}'
+    usr_display_bil: '{{$data.unique_display_name}}'
+  validate:
+  - type: status_code
+    expected: 200
+  - type: json_path_equals
+    expression: $.code
+    expected: 200
+- id: WB_USER_UPDATE_CONTRACT_VERIFY_001
+  enabled: true
+  order: 911
+  endpoint: EP_USER_GET_FORM
+  depends_on:
+  - WB_USER_UPDATE_CONTRACT_PARTIAL_001
+  priority: P0
+  owner: Rey
+  case_type: api
+  name: 更新契约实验-确认目标字段已修改
+  tags:
+  - update_contract
+  - contract_experiment
+  - verify
+  contract_experiment: true
+  risk_level: update
+  data:
+    pdate: $timestamp_ms
+    usr_ent_id: '{{target_usr_ent_id}}'
+  validate:
+  - type: status_code
+    expected: 200
+  - type: json_path_equals
+    expression: $.code
+    expected: 200
+  - type: json_path_equals
+    expression: $.data.usr_display_bil
+    expected: '{{$data.unique_display_name}}'
+- id: WB_USER_UPDATE_CONTRACT_ROLLBACK_001
+  enabled: true
+  order: 912
+  endpoint: EP_USER_UPDATE
+  depends_on:
+  - WB_USER_UPDATE_CONTRACT_PARTIAL_001
+  priority: P0
+  owner: Rey
+  case_type: api
+  name: 更新契约实验-按Before Snapshot完整恢复
+  tags:
+  - update_contract
+  - contract_experiment
+  - rollback
+  contract_experiment: true
+  risk_level: reset
+  restore_mapping:
+    source_effect: WB_USER_UPDATE_CONTRACT_PARTIAL_001
+    fields:
+      json.usr_ste_usr_id: before.usr_ste_usr_id
+      json.usr_display_bil: before.usr_display_bil
+      json.usr_nickname: before.usr_nickname
+      json.usr_gender: before.usr_gender
+      json.usr_bday: before.usr_bday
+      json.usr_email: before.usr_email
+      json.usr_tel_1: before.usr_tel_1
+      json.usr_fax_1: before.usr_fax_1
+      json.usr_extra_2: before.usr_extra_2
+      json.urx_extra_41: before.urx_extra_41
+      json.urx_extra_42: before.urx_extra_42
+      json.usr_job_title: before.usr_job_title
+      json.usr_join_datetime: before.usr_join_datetime
+      json.eip_code: before.eip_code
+      json.urx_extra_44: before.urx_extra_44
+      json.urx_extra_45: before.urx_extra_45
+      json.userGroupCode: before.userGroupCode
+      json.usgDisplayBil: before.usgDisplayBil
+      json.userGroupId: before.userGroupId
+      json.gradeCode: before.gradeCode
+      json.ugrDisplayBil: before.ugrDisplayBil
+      json.gradeId: before.gradeId
+      json.positionCode: before.positionCode
+      json.positionTitle: before.positionTitle
+      json.positionId: before.positionId
+      json.tag: before.tag
+      json.tagName: before.tagName
+      json.tagId: before.tagId
+      json.userTagVOList: before.userTagVOList
+      json.roleCode: before.roleCode
+      json.directLeader: before.directLeader
+      json.directLeaderId: before.directLeaderId
+      json.directLeaderCode: before.directLeaderCode
+      json.directLeaderDisplayBil: before.directLeaderDisplayBil
+      json.leaderList: before.leaderList
+      json.highestApprovalUserGroupCode: before.highestApprovalUserGroupCode
+      json.highestApprovalUsgDisplayBil: before.highestApprovalUsgDisplayBil
+      json.highestApprovalUserGroupId: before.highestApprovalUserGroupId
+      json.subordinateDepartment: before.subordinateDepartment
+      json.subordinateDepartmentUsgDisplayBil: before.subordinateDepartmentUsgDisplayBil
+      json.subordinateDepartmentId: before.subordinateDepartmentId
+      json.ssoConnectionEnable: before.ssoConnectionEnable
+      json.usrSource: before.usrSource
+      json.usr_pwd_need_change_ind: before.usr_pwd_need_change_ind
+      json.curLan: before.curLan
+      json.head_portrait_path: before.head_portrait_path
+      json.urx_extra_send_email: before.urx_extra_send_email
+      json.noUpdLyndon: before.noUpdLyndon
+  json:
+    line: 0
+    usr_ent_id: '{{current_user_ent_id}}'
+    usr_ste_usr_id: '{{original_usr_ste_usr_id}}'
+    usr_pwd: null
+    usr_display_bil: null
+    usr_nickname: null
+    usr_gender: null
+    usr_bday: null
+    usr_email: null
+    usr_tel_1: null
+    usr_fax_1: null
+    usr_extra_2: null
+    urx_extra_41: null
+    urx_extra_42: null
+    usr_job_title: null
+    usr_join_datetime: null
+    eip_code: null
+    urx_extra_44: null
+    urx_extra_45: null
+    userGroupCode: null
+    usgDisplayBil: null
+    userGroupId: null
+    gradeCode: null
+    ugrDisplayBil: null
+    gradeId: null
+    positionCode: null
+    positionTitle: null
+    positionId: null
+    tag: null
+    tagName: null
+    tagId: null
+    userTagVOList: null
+    roleCode: null
+    directLeader: null
+    directLeaderId: null
+    directLeaderCode: null
+    directLeaderDisplayBil: null
+    leaderList: null
+    highestApprovalUserGroupCode: null
+    highestApprovalUsgDisplayBil: null
+    highestApprovalUserGroupId: null
+    subordinateDepartment: null
+    subordinateDepartmentUsgDisplayBil: null
+    subordinateDepartmentId: null
+    ssoConnectionEnable: null
+    usrSource: null
+    usr_pwd_need_change_ind: null
+    curLan: null
+    head_portrait_path: null
+    urx_extra_send_email: null
+    noUpdLyndon: null
+    eip_id: '{{target_usr_eip_id}}'
+    pdate: $timestamp_ms
+  validate:
+  - type: status_code
+    expected: 200
+  - type: json_path_equals
+    expression: $.code
+    expected: 200
+- id: WB_USER_UPDATE_CONTRACT_VERIFY_ROLLBACK_001
+  enabled: true
+  order: 913
+  endpoint: EP_USER_GET_FORM
+  depends_on:
+  - WB_USER_UPDATE_CONTRACT_ROLLBACK_001
+  priority: P0
+  owner: Rey
+  case_type: api
+  name: 更新契约实验-恢复后独立查询验证
+  tags:
+  - update_contract
+  - contract_experiment
+  - rollback
+  - verify
+  contract_experiment: true
+  risk_level: update
+  data:
+    pdate: $timestamp_ms
+    usr_ent_id: '{{target_usr_ent_id}}'
+  validate:
+  - type: status_code
+    expected: 200
+  - type: json_path_equals
+    expression: $.code
+    expected: 200
+  - type: json_path_equals
+    expression: $.data.usr_display_bil
+    expected: '{{original_usr_display_bil}}'

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -124,6 +125,42 @@ def test_effect_diff_contract_rejects_missing_target_change(monkeypatch):
 
     with pytest.raises(AssertionError, match="missing"):
         CaseRunner._assert_effect_diff_contract(case, {"diff": {}})
+
+
+@pytest.mark.parametrize(
+    "actual_fields, expected_error",
+    [
+        ({"name", "updateTime"}, None),
+        ({"updateTime"}, "missing"),
+        ({"name", "updateTime", "roleCode"}, "unexpected"),
+    ],
+    ids=["allowed-extra-change", "missing-required", "outside-allowed"],
+)
+def test_effect_diff_contract_uses_allowed_fields(
+    monkeypatch, actual_fields, expected_error
+):
+    evidence = []
+    monkeypatch.setattr("allure.attach", lambda body, **kwargs: evidence.append(body))
+    case = {
+        "id": "EXP_ALLOWED",
+        "effect": {
+            "diff_contract": {
+                "required": ["name"],
+                "allowed": ["name", "updateTime"],
+            },
+        },
+    }
+    snapshot = {"diff": {field: {"from": "A", "to": "B"} for field in actual_fields}}
+
+    if expected_error is None:
+        CaseRunner._assert_effect_diff_contract(case, snapshot)
+    else:
+        with pytest.raises(AssertionError, match=expected_error):
+            CaseRunner._assert_effect_diff_contract(case, snapshot)
+
+    recorded = json.loads(evidence[0])
+    assert recorded["missing"] == sorted({"name"} - actual_fields)
+    assert recorded["unexpected"] == sorted(actual_fields - {"name", "updateTime"})
 
 
 def test_update_contract_validator_rejects_extra_payload_field():

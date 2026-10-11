@@ -1,0 +1,41 @@
+{
+  "_fixture_metadata": {
+    "synthetic": true,
+    "source": "Hand-authored offline safety fixture; not an API response",
+    "purpose": "Tag/Leader derivation and safe Write Model validation"
+  },
+  "data": {
+    "usr_ent_id": 900001,
+    "usr_ste_usr_id": "synthetic-user-001",
+    "usr_display_bil": "Synthetic Baseline",
+    "usr_nickname": null,
+    "usr_gender": "",
+    "usr_bday": null,
+    "usr_email": "synthetic@example.invalid",
+    "usr_tel_1": null,
+    "usr_fax_1": null,
+    "usr_extra_2": null,
+    "urx_extra_41": null,
+    "urx_extra_42": null,
+    "usr_job_title": null,
+    "usr_join_datetime": null,
+    "eip_code": null,
+    "urx_extra_44": null,
+    "urx_extra_45": null,
+    "userGroupId": "synthetic-group-id",
+    "gradeId": "synthetic-grade-id",
+    "positionId": null,
+    "roleCode": "SYNTHETIC_ROLE",
+    "highestApprovalUserGroupId": null,
+    "subordinateDepartmentId": null,
+    "ssoConnectionEnable": "No",
+    "userTagVOList": [
+      {"encryId": "synthetic-tag-b", "tagName": "Synthetic Tag B"},
+      {"encryId": "synthetic-tag-a", "tagName": "Synthetic Tag A"}
+    ],
+    "leaderList": [
+      {"usr_ent_id_encrypt": "synthetic-leader-b", "usr_display_bil": "Synthetic Leader B"},
+      {"usr_ent_id_encrypt": "synthetic-leader-a", "usr_display_bil": "Synthetic Leader A"}
+    ]
+  }
+}

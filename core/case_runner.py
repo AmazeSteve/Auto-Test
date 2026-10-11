@@ -155,7 +155,7 @@ class CaseRunner:
         allowed = set(contract.get("allowed",[]) or [])
 
         missing = sorted(required- actual)
-        unexpected = sorted(actual- required)
+        unexpected = sorted(actual- allowed)
         evidence = {
             "required": sorted(required),
             "allowed": sorted(allowed),

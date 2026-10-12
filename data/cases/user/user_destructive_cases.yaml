@@ -46,65 +46,23 @@
         expected_status: 200
         expected_code: 200
   risk_level: update
-  json:
-    line: 0
-    usr_ent_id: "{{current_user_ent_id}}"
-#    usr_ste_usr_id: "ee-Rey-15"
-    usr_ste_usr_id: "{{original_usr_ste_usr_id}}"
-    usr_pwd: ~
-#    usr_display_bil: "Rey-15-full-upd"
-    usr_display_bil: "{{$data.unique_display_name}}"
-    usr_nickname: ""
-    usr_gender: ""
-    usr_bday: ~
-    usr_email: ""
-    usr_tel_1: ""
-    usr_fax_1: ""
-    usr_extra_2: ""
-    urx_extra_41: ""
-    urx_extra_42: ""
-    usr_job_title: ""
-    usr_join_datetime: ~
-    eip_code: "ee"
-    urx_extra_44: ""
-    urx_extra_45: ""
-    userGroupCode: ~
-    usgDisplayBil: "{{original_usg_display_bil}}"
-    userGroupId: "{{original_user_group_id}}"
-    gradeCode: ~
-    ugrDisplayBil: "{{original_ugr_display_bil}}"
-    gradeId: "{{original_grade_id}}"
-    positionCode: ~
-    positionTitle: ~
-    positionId: ~
-    tag: ~
-    tagName: ""
-    tagId: ~
-    userTagVOList: [ ]
-    roleCode: "NLRN_1,TADM_1"
-    directLeader: ~
-    directLeaderId: ~
-    directLeaderCode: ~
-    directLeaderDisplayBil: ~
-    leaderList: ~
-    highestApprovalUserGroupCode: ~
-    highestApprovalUsgDisplayBil: ~
-    highestApprovalUserGroupId: ~
-    subordinateDepartment: ~
-    subordinateDepartmentUsgDisplayBil: ~
-    subordinateDepartmentId: ~
-    ssoConnectionEnable: "No"
-    usrSource: "wizBank"
-    usr_pwd_need_change_ind: 0
-    curLan: "zh-cn"
-    head_portrait_path: ~
-    urx_extra_send_email: ~
-    noUpdLyndon: false
-    eip_id: 50
-    pdate: "$timestamp_ms"
+  request_builder:
+    name: user_update
+    source:
+      type: effect_before
+      expression: $.data
+    arguments:
+      cur_lan: "zh-cn"
+    mutable_fields:
+      - usr_display_bil
+    overrides:
+      usr_display_bil: "{{$data.unique_display_name}}"
   validate:
-      - type: status_code
-        expected: 200
+    - type: status_code
+      expected: 200
+    - type: json_path_equals
+      expression: $.code
+      expected: 200
 #增加修改后验证用例
 - id: WB_USER_DESTRUCTIVE_VERIFY_001
   enabled: true
@@ -128,6 +86,9 @@
     usr_ent_id: "{{target_usr_ent_id}}"
   validate:
     - type: status_code
+      expected: 200
+    - type: json_path_equals
+      expression: $.code
       expected: 200
     - type: json_path_equals
       expression: $.data.usr_display_bil
@@ -154,70 +115,13 @@
     - destructive
     - rollback
   risk_level: reset
-  # 显式恢复映射。恢复值只允许来自 Effect Snapshot 的 before 状态。
-  restore_mapping:
+  restore_payload:
     source_effect: WB_USER_DESTRUCTIVE_DEMO_001
-    fields:
-      json.usr_display_bil: before.usr_display_bil
-      json.userGroupId: before.userGroupId
-      json.gradeId: before.gradeId
-  json:
-    line: 0
-    usr_ent_id: "{{current_user_ent_id}}"
-#    usr_ste_usr_id: "ee-Rey-15"
-    usr_ste_usr_id: "{{original_usr_ste_usr_id}}"
-    usr_pwd: ~
-#    usr_display_bil: "{{original_usr_display_bil}}"
-    usr_nickname: ""
-    usr_gender: ""
-    usr_bday: ~
-    usr_email: ""
-    usr_tel_1: ""
-    usr_fax_1: ""
-    usr_extra_2: ""
-    urx_extra_41: ""
-    urx_extra_42: ""
-    usr_job_title: ""
-    usr_join_datetime: ~
-    eip_code: "ee"
-    urx_extra_44: ""
-    urx_extra_45: ""
-    userGroupCode: ~
-    usgDisplayBil: "{{original_usg_display_bil}}"
-#    userGroupId: "b32ee16a6911e9330f750ced6fb37c13"
-    gradeCode: ~
-    ugrDisplayBil: "{{original_ugr_display_bil}}"
-#    gradeId: "05406a734a572540d962c9609991d87a"
-    positionCode: ~
-    positionTitle: ~
-    positionId: ~
-    tag: ~
-    tagName: ""
-    tagId: ~
-    userTagVOList: []
-    roleCode: "NLRN_1,TADM_1"
-    directLeader: ~
-    directLeaderId: ~
-    directLeaderCode: ~
-    directLeaderDisplayBil: ~
-    leaderList: ~
-    highestApprovalUserGroupCode: ~
-    highestApprovalUsgDisplayBil: ~
-    highestApprovalUserGroupId: ~
-    subordinateDepartment: ~
-    subordinateDepartmentUsgDisplayBil: ~
-    subordinateDepartmentId: ~
-    ssoConnectionEnable: "No"
-    usrSource: "wizBank"
-    usr_pwd_need_change_ind: 0
-    curLan: "zh-cn"
-    head_portrait_path: ~
-    urx_extra_send_email: ~
-    noUpdLyndon: false
-    eip_id: 50
-    pdate: $timestamp_ms
   validate:
     - type: status_code
+      expected: 200
+    - type: json_path_equals
+      expression: $.code
       expected: 200
 #增加恢复后验证
 - id: WB_USER_DESTRUCTIVE_VERIFY_ROLLBACK_001
@@ -242,6 +146,9 @@
     usr_ent_id: "{{target_usr_ent_id}}"
   validate:
     - type: status_code
+      expected: 200
+    - type: json_path_equals
+      expression: $.code
       expected: 200
     - type: json_path_equals
       expression: $.data.usr_display_bil

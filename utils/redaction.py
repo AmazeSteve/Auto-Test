@@ -4,7 +4,7 @@ import copy
 
 
 class SensitiveDataRedactor:
-    """递归脱敏常见认证字段，不修改原对象。"""
+    """脱敏认证字段和用户 PII，恢复材料仅保留诊断元数据，不修改原对象。"""
 
     REDACTED = "<REDACTED>"
 
@@ -24,6 +24,14 @@ class SensitiveDataRedactor:
         "apikey",
         "secret",
         "admin_cookie",
+        "usr_ste_usr_id",
+        "usr_display_bil",
+        "usr_nickname",
+        "usr_bday",
+        "usr_email",
+        "usr_tel_1",
+        "usr_fax_1",
+        "usr_extra_2",
     }
 
     @classmethod
@@ -49,7 +57,14 @@ class SensitiveDataRedactor:
         if isinstance(value, dict):
             result = {}
             for key, item in value.items():
-                if cls._is_sensitive_key(key):
+                if str(key).strip().lower() == "restore_payload" and isinstance(item, dict):
+                    payload = item.get("payload")
+                    result[key] = {
+                        "target": cls.redact(item.get("target")),
+                        "field_count": len(payload) if isinstance(payload, dict) else 0,
+                        "keys": sorted(payload) if isinstance(payload, dict) else [],
+                    }
+                elif cls._is_sensitive_key(key):
                     result[key] = cls.REDACTED
                 else:
                     result[key] = cls.redact(item)

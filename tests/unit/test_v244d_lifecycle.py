@@ -1,4 +1,6 @@
 from pathlib import Path
+from copy import deepcopy
+import json
 
 import pytest
 
@@ -27,24 +29,23 @@ class StatefulUserClient:
     def __init__(self, state):
         self.state = state
         self.calls = []
+        # The migrated YAML now projects the complete frozen B1 Read Model.
+        self.read_model = json.loads(
+            (PROJECT_ROOT / "tests/fixtures/user_update_read_model.json").read_text()
+        )
 
     def request(self, method, path, **kwargs):
         self.calls.append({"method": method, "path": path, **kwargs})
 
         if path == "/app/v2/admin/user/get_user_excel_form":
+            model = deepcopy(self.read_model)
+            model.update(self.state)
+            model["usr_ste_usr_id"] = "ee-Rey-15"
             return FakeResponse(
                 {
                     "code": 200,
                     "message": "success",
-                    "data": {
-                        "usr_ent_id": 1830,
-                        "usr_ste_usr_id": "ee-Rey-15",
-                        "usr_display_bil": self.state["usr_display_bil"],
-                        "userGroupId": self.state["userGroupId"],
-                        "usgDisplayBil": self.state["usgDisplayBil"],
-                        "gradeId": self.state["gradeId"],
-                        "ugrDisplayBil": self.state["ugrDisplayBil"],
-                    },
+                    "data": model,
                 }
             )
 
@@ -142,6 +143,9 @@ def test_dynamic_mutation_and_explicit_restore_mapping(destructive_cases):
     assert rollback_calls[-1]["json"]["usr_display_bil"] == "Original Name"
     assert rollback_calls[-1]["json"]["userGroupId"] == "GROUP-1"
     assert rollback_calls[-1]["json"]["gradeId"] == "GRADE-1"
+    assert len(rollback_calls[0]["json"]) == 27
+    assert len(rollback_calls[-1]["json"]) == 27
+    assert Context.get_effect("WB_USER_DESTRUCTIVE_DEMO_001")["restore_payload"]["payload"] == rollback_calls[-1]["json"]
 
     assert Context.get_effect_state(
         "WB_USER_DESTRUCTIVE_DEMO_001"

@@ -16,11 +16,15 @@ import copy
 from wizbank_api_test.core.context import Context
 
 class EffectRestoreResolver:
-    """根据 restore_mapping 构造 rollback Case 的运行期请求数据。"""
+    """根据显式 Snapshot 映射或标准化恢复材料构造 rollback Case 副本。"""
     ALLOWED_TARGET_ROOTS={"json","data","params"}
 
     @classmethod
     def apply (cls, case:dict):
+        if "restore_payload" in case:
+            if "restore_mapping" in case:
+                raise ValueError("restore_payload cannot coexist with restore_mapping")
+            return cls._apply_restore_payload(case)
         config = case.get("restore_mapping")
         if not config:
             return copy.deepcopy(case), {}
@@ -45,6 +49,35 @@ class EffectRestoreResolver:
             }
 
         return runtime_case, evidence
+
+    @classmethod
+    def _apply_restore_payload(cls, case: dict):
+        config = case["restore_payload"]
+        if not isinstance(config, dict) or set(config) != {"source_effect"}:
+            raise ValueError("restore_payload requires only source_effect")
+        source_effect = config["source_effect"]
+        if not isinstance(source_effect, str) or not source_effect.strip():
+            raise ValueError("restore_payload.source_effect must be a nonblank Case ID")
+        effect = Context.get_effect(source_effect)
+        if not effect:
+            raise ValueError("restore_payload source Effect does not exist")
+        envelope = effect.get("restore_payload")
+        if not isinstance(envelope, dict):
+            raise ValueError("Effect restore_payload envelope is missing")
+        target = envelope.get("target")
+        if target != "json":
+            raise ValueError("restore_payload envelope target must be json")
+        if "payload" not in envelope or not isinstance(envelope["payload"], dict):
+            raise ValueError("restore_payload envelope payload must be a dict")
+        payload = envelope["payload"]
+        runtime_case = copy.deepcopy(case)
+        runtime_case[target] = copy.deepcopy(payload)
+        return runtime_case, {
+            "source_effect": source_effect,
+            "target": target,
+            "field_count": len(payload),
+            "keys": sorted(payload),
+        }
 
     @staticmethod
     def _get_path(data: dict, path: str):

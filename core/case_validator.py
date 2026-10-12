@@ -17,6 +17,7 @@ import re
 from jsonpath_ng import  parse
 from wizbank_api_test.core.endpoint_registry import EndpointRegistry
 from wizbank_api_test.utils.test_data_factory import TestDataFactory
+from wizbank_api_test.services.request_payload_resolver import RequestPayloadResolver
 class CaseValidator:
     """
     YAML 用例静态校验器
@@ -183,6 +184,8 @@ class CaseValidator:
         errors.extend(cls._validate_update_contract_experiment(cases))
         errors.extend(cls._validate_data_factory_references(cases))
         errors.extend(cls._validate_restore_mapping_contract(cases))
+        errors.extend(cls._validate_request_builder_contract(cases))
+        errors.extend(cls._validate_restore_payload_contract(cases))
         errors.extend(cls._validate_lifecycle_contract(cases))
         errors.extend(
             cls._validate_validation_rules(cases)
@@ -405,9 +408,13 @@ class CaseValidator:
 
             body_count = sum([has_json,has_data,has_files])
 
+            producers = [key for key in ("request_builder", "restore_payload") if key in case]
+            if producers:
+                body_count = len(producers) + sum(key in case for key in ("json", "data", "files"))
+
             if body_count > 1:
                 errors.append(
-                    f"{case_id}:json/data/files 不建议同时配置，请确认清楚再配置"
+                    f"{case_id}:json/data/files/request_builder/restore_payload 不允许同时配置"
                 )
         return errors
 
@@ -434,6 +441,9 @@ class CaseValidator:
                        errors.append(f"{case_id}:GET用例 不应配置data")
                 if  case.get("files")  not in (None,{}):
                        errors.append(f"{case_id}:GET用例 不应配置files")
+                for producer in ("request_builder", "restore_payload"):
+                    if producer in case:
+                        errors.append(f"{case_id}:GET用例 不应配置{producer}")
 
         return errors
     @classmethod
@@ -483,6 +493,7 @@ class CaseValidator:
 
             if not content_type:
                 continue
+            has_json = has_json or "request_builder" in case or "restore_payload" in case
             # 正向检查：有 Content-Type 必须有对应 body
             if "application/json" in content_type and not has_json:
                     errors.append(f"{case_id}: Content-Type 为 application/json，但未配置 json")
@@ -497,6 +508,60 @@ class CaseValidator:
                 errors.append(
                     f"{case_id}: 配置了 json，但 Content-Type 为 {content_type}，建议改为 application/json"
                 )
+        return errors
+
+    @classmethod
+    def _validate_request_builder_contract(cls, cases: list):
+        errors = []
+        for case in cases:
+            if "request_builder" not in case:
+                continue
+            case_id = case.get("id", "UNKNOWN")
+            try:
+                RequestPayloadResolver.validate_config(case["request_builder"])
+            except ValueError as exc:
+                errors.append(f"{case_id}: {exc}")
+            effect = case.get("effect")
+            capture = effect.get("capture") if isinstance(effect, dict) else None
+            if (not isinstance(capture, dict) or capture.get("enabled", True) is False
+                    or not capture.get("before") or not capture.get("after")):
+                errors.append(f"{case_id}.request_builder: requires enabled Effect before/after capture")
+        return errors
+
+    @classmethod
+    def _validate_restore_payload_contract(cls, cases: list):
+        errors = []
+        case_map = {case.get("id"): case for case in cases if case.get("id")}
+        for case in cases:
+            if "restore_payload" not in case:
+                continue
+            location = f"{case.get('id', 'UNKNOWN')}.restore_payload"
+            config = case["restore_payload"]
+            if "restore_mapping" in case:
+                errors.append(f"{location}: cannot coexist with restore_mapping")
+            if "rollback" not in (case.get("tags") or []):
+                errors.append(f"{location}: requires rollback tag")
+            if case.get("destructive") is not True:
+                errors.append(f"{location}: requires destructive=true")
+            if not isinstance(config, dict):
+                errors.append(f"{location}: must be a dict")
+                continue
+            if set(config) - {"source_effect"}:
+                errors.append(f"{location}: contains unknown keys")
+            source = config.get("source_effect")
+            if not isinstance(source, str) or not source.strip():
+                errors.append(f"{location}.source_effect: must be a nonblank Case ID")
+                continue
+            source_case = case_map.get(source)
+            if source_case is None:
+                errors.append(f"{location}.source_effect: Case does not exist")
+                continue
+            if source not in cls._normalize_depends(case.get("depends_on")):
+                errors.append(f"{location}.source_effect: must appear in depends_on")
+            if not source_case.get("effect"):
+                errors.append(f"{location}.source_effect: source Case has no effect")
+            if "request_builder" not in source_case:
+                errors.append(f"{location}.source_effect: source Case cannot produce restore material")
         return errors
 
     @classmethod
@@ -1057,12 +1122,20 @@ class CaseValidator:
                         "必须 destructive=true"
                     )
 
-                restore_mapping = rollback_case.get("restore_mapping") or {}
-                if restore_mapping.get("source_effect") != case_id:
+                mechanisms = [key for key in ("restore_mapping", "restore_payload") if key in rollback_case]
+                if len(mechanisms) != 1:
                     errors.append(
                         f"{case_id}.lifecycle.rollback: {rollback_id} "
-                        "restore_mapping.source_effect 必须指向 lifecycle root"
+                        "必须配置 restore_mapping XOR restore_payload"
                     )
+                else:
+                    mechanism = mechanisms[0]
+                    config = rollback_case[mechanism]
+                    if not isinstance(config, dict) or config.get("source_effect") != case_id:
+                        errors.append(
+                            f"{case_id}.lifecycle.rollback: {rollback_id} "
+                            f"{mechanism}.source_effect 必须指向 lifecycle root"
+                        )
 
             if verify_rollback_case:
                 verify_rb_depends = cls._normalize_depends(

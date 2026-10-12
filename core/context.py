@@ -26,6 +26,9 @@ v2.4.5A 完成 Context V2：
 """
 
 import  copy
+
+_UNSET = object()
+
 class Context:
     """
     pm.collectionVariables.set()
@@ -126,8 +129,12 @@ class Context:
             snapshot=None,
             state=EFFECT_APPLIED,
             error=None,
+            restore_payload=_UNSET,
     ):
         cls._ensure_structure()
+        existing = cls._data["effects"].get(case_id, {})
+        if restore_payload is _UNSET and "restore_payload" in existing:
+            restore_payload = existing["restore_payload"]
         cls._data["effects"][case_id] = {
             "state": state,
             # 保留 applied 布尔值，兼容现有查看方式。
@@ -135,6 +142,8 @@ class Context:
             "metadata": metadata or {},
             "snapshot": snapshot or {},
         }
+        if restore_payload is not _UNSET:
+            cls._data["effects"][case_id]["restore_payload"] = copy.deepcopy(restore_payload)
         if error:
             cls._data["effects"][case_id]["error"] = str(error)
 

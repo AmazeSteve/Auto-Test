@@ -16,6 +16,7 @@ CaseRunner 只负责一条 Case 自己的执行：
 """
 
 import  json
+from copy import deepcopy
 
 import  allure
 
@@ -28,6 +29,10 @@ from wizbank_api_test.core.effect_executor import EffectExecutor
 from wizbank_api_test.core.extractor import Extractor
 from wizbank_api_test.core.variable_resolver import VariableResolver
 from wizbank_api_test.utils.redaction import SensitiveDataRedactor
+from wizbank_api_test.services.request_payload_resolver import RequestPayloadResolver
+
+_UNSET = object()
+
 class CaseRunner:
     """
     单条YAML用例执行器
@@ -176,7 +181,7 @@ class CaseRunner:
             )
 
     @classmethod
-    def _mark_effect_unknown(cls,case: dict,before,error):
+    def _mark_effect_unknown(cls,case: dict,before,error,restore_payload=_UNSET):
         """
       在 before 已成功时，会先调用 EffectCollector.pick_fields
       将 before 原始 payload 转换为逻辑字段快照，
@@ -202,12 +207,16 @@ class CaseRunner:
             "after": None,
             "diff": {},
         }
+        restore_arguments = (
+            {} if restore_payload is _UNSET else {"restore_payload": restore_payload}
+        )
         Context.mark_effect(
             case_id=case["id"],
             metadata=case.get("effect", {}),
             snapshot=snapshot,
             state=Context.EFFECT_UNKNOWN,
             error=error,
+            **restore_arguments,
         )
         cls._attach_effect_snapshot(case["id"], snapshot)
 
@@ -235,7 +244,12 @@ class CaseRunner:
         # headers 已在发送前完成变量解析
         params = VariableResolver.resolve(case.get("params", {}))
         headers = cls.build_header(case,admin_cookie)
-        json_body = VariableResolver.resolve(case.get("json"))
+        literal_runtime_json = "request_builder" in case or "restore_payload" in case
+        json_body = (
+            deepcopy(case.get("json"))
+            if literal_runtime_json
+            else VariableResolver.resolve(case.get("json"))
+        )
         data = VariableResolver.resolve(case.get("data"))
         files = VariableResolver.resolve(case.get("files"))
         allow_redirects = case.get("allow_redirects", True)
@@ -246,6 +260,9 @@ class CaseRunner:
         effect_enabled = cls._effect_capture_enabled(case)
         effect_before = None
         effect_snapshot = None
+        restore_arguments = {}
+        if "request_builder" in case and not effect_enabled:
+            raise ValueError("request_builder requires enabled Effect before/after capture")
         # before Capture 失败时，主 destructive 请求不会发送。
         # 没有可恢复快照就拒绝修改，这是安全底线。
         if effect_enabled:
@@ -255,6 +272,12 @@ class CaseRunner:
                 admin_cookie=admin_cookie,
                 header_builder=cls.build_header
             )
+        if "request_builder" in case:
+            resolved = RequestPayloadResolver.resolve(case, effect_before)
+            if resolved.target != "json":
+                raise ValueError("request_builder output target must be json")
+            json_body = resolved.body
+            restore_arguments = {"restore_payload": resolved.restore_payload}
         # 运行前上下文快照
         # runtime_before = Context.snapshot()
         # ---------- 7. 发送请求 ----------
@@ -269,6 +292,7 @@ class CaseRunner:
                 data=data,
                 files=files,
                 allow_redirects=allow_redirects,
+                **({"literal_json": True} if literal_runtime_json else {}),
             )
         except Exception as exc:
             # destructive 请求一旦开始发送，连接级异常无法证明服务端没有生效。
@@ -278,6 +302,7 @@ class CaseRunner:
                     case=case,
                     before=effect_before,
                     error=exc,
+                    **restore_arguments,
                 )
             raise
         # destructive 请求发出后，先确认真实业务状态，再执行普通响应断言。
@@ -308,6 +333,7 @@ class CaseRunner:
                     metadata=case.get("effect", {}),
                     snapshot=effect_snapshot,
                     state=effect_state,
+                    **restore_arguments,
                 )
                 cls._attach_effect_snapshot(
                     case["id"],
@@ -318,10 +344,11 @@ class CaseRunner:
                     case=case,
                     before=effect_before,
                     error=exc,
+                    **restore_arguments,
                 )
                 raise
 
-        # 使得 expected: "{{original_usr_display_bil}}" 能够被正确解析
+        # 响应断言中的运行期变量也需要解析。
         validations = VariableResolver.resolve(case.get("validate", []))
 
         # ---------- 8. 断言 ----------

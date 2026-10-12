@@ -4,6 +4,7 @@
 
 """
 import json
+from copy import deepcopy
 
 
 import requests
@@ -48,6 +49,7 @@ class ApiClient:
         data=None,
         files=None,
         allow_redirects=True,
+        literal_json=False,
     ):
         url = self.base_url +"/" +path.lstrip("/")
 
@@ -56,7 +58,7 @@ class ApiClient:
         resolved_headers = VariableResolver.resolve(headers or {})
         # 避免乱传
         resolved_json = (
-            VariableResolver.resolve(json)
+            (deepcopy(json) if literal_json else VariableResolver.resolve(json))
             if json is not None
             else None
         )

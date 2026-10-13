@@ -27,6 +27,12 @@ def pytest_addoption(parser):
         default=False,
         help='允许执行接口契约实验用例；必须同时显式允许 destructive'
     )
+    parser.addoption(
+        '--allow-c1-real-lifecycle',
+        action='store_true',
+        default=False,
+        help='C1 真实生命周期额外许可；还需 destructive 许可及显式双重用户名确认'
+    )
 #     增加--tag 过滤
     parser.addoption(
     '--tag',

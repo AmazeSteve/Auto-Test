@@ -1,0 +1,31 @@
+$kind: http-request
+name: Synthetic format regression
+url: '{{Host-226}}app/v2/items/{{itemId}}?pdate=CANARY_QUERY&token=CANARY_QUERY_TOKEN'
+method: GET
+settings:
+  disabledSystemHeaders: []
+order: 1000
+headers:
+  Authorization: Bearer CANARY_AUTHORIZATION
+  Cookie: session=CANARY_COOKIE
+  Content-Type: application/json
+queryParams:
+  - key: pageNum
+    value: CANARY_PAGE_NUMBER
+  - key: ignored
+    value: CANARY_DISABLED_QUERY
+    disabled: true
+auth:
+  type: bearer
+  bearer:
+    - key: token
+      value: CANARY_BEARER
+  oauth2:
+    - key: clientSecret
+      value: CANARY_CLIENT_SECRET
+body:
+  type: json
+  content: '{"password":"CANARY_PASSWORD","profile":{"clientsecret":"CANARY_BODY_CLIENT_SECRET"},"items":[{"label":"CANARY_LABEL"}]}'
+scripts:
+  - type: pre-request
+    code: CANARY_SCRIPT

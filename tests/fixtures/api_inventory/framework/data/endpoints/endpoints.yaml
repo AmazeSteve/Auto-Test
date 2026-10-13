@@ -1,0 +1,32 @@
+- id: ITEM
+  method: GET
+  path: /app/items/{{item_id}}?password=CANARY_REGISTRY_QUERY_SECRET
+  host: https://CANARY_REGISTRY_HOST_SECRET.invalid
+  auth: CANARY_REGISTRY_AUTH_SECRET
+  module: Inventory
+  default_tags: [readonly, shared]
+  headers:
+    Authorization: CANARY_REGISTRY_AUTHORIZATION_SECRET
+    Cookie: CANARY_REGISTRY_COOKIE_SECRET
+  params:
+    password: CANARY_REGISTRY_PARAMS_SECRET
+    unchanged: endpoint-default
+- id: ITEM_ALIAS
+  method: GET
+  path: /items/{other_name}
+  host: Host-be
+- id: WRITE
+  method: POST
+  path: /app/items
+  destructive: true
+  default_tags: [update]
+  json:
+    password: CANARY_REGISTRY_BODY_SECRET
+- id: DISPATCH
+  method: POST
+  path: /app/servlet/Dispatcher
+  data:
+    module: admin
+    cmd: get_item
+    pageNum: 3
+    password: CANARY_DISPATCH_PASSWORD_SECRET

@@ -1,0 +1,15 @@
+$kind: http-request
+name: Safe synthetic item query
+method: GET
+url: https://CANARY_HOST.example/app/api/items/arbitrary-name?password=CANARY_QUERY
+queryParams:
+  page: CANARY_PAGE
+headers:
+  Authorization: Bearer CANARY_BEARER
+  Cookie: session=CANARY_COOKIE
+body:
+  type: json
+  content: '{"password":"CANARY_PASSWORD","client_secret":"CANARY_CLIENT_SECRET"}'
+auth:
+  type: bearer
+  token: CANARY_AUTH

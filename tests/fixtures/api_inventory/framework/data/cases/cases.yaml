@@ -1,0 +1,31 @@
+- id: NORMAL
+  endpoint: ITEM
+  tags: [shared, case-only]
+  params:
+    password: CANARY_CASE_QUERY_SECRET
+  headers:
+    Authorization: CANARY_CASE_BEARER_TOKEN_SECRET
+    Cookie: CANARY_CASE_COOKIE_SECRET
+- id: OVERRIDE
+  enabled: true
+  endpoint: ITEM
+  method: DELETE
+  path: /app/items/{item_id}/archive?client_secret=CANARY_CASE_CLIENT_SECRET
+  json:
+    password: CANARY_CASE_BODY_PASSWORD_SECRET
+- id: DISABLED
+  enabled: false
+  endpoint: ITEM
+- id: DISABLED_ALIAS
+  enable: false
+  method: POST
+  path: /demo/form
+  data:
+    password: CANARY_DISABLED_BODY_SECRET
+- id: DISPATCH_OVERRIDE
+  endpoint: DISPATCH
+  data:
+    module: admin
+    cmd: list_items
+    pageNum: 10
+    password: CANARY_CASE_LEGACY_SECRET

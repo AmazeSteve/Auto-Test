@@ -1,0 +1,5 @@
+$kind: environment
+name: CANARY_ENVIRONMENT_NAME
+values:
+  token: CANARY_ENVIRONMENT_TOKEN
+  password: CANARY_ENVIRONMENT_PASSWORD

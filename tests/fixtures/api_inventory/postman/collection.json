@@ -1,0 +1,39 @@
+{
+  "info": {
+    "name": "Synthetic standard Postman collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{"key": "token", "value": "CANARY_COLLECTION_BEARER"}]
+  },
+  "item": [
+    {
+      "name": "Synthetic folder",
+      "item": [
+        {
+          "name": "Synthetic standard request",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "https://user:CANARY_HOST_PASSWORD@example.invalid/app/v2/items?search=CANARY_SEARCH",
+              "query": [
+                {"key": "search", "value": "CANARY_SEARCH"},
+                {"key": "token", "value": "CANARY_COLLECTION_QUERY"}
+              ]
+            },
+            "header": [
+              {"key": "Authorization", "value": "Bearer CANARY_COLLECTION_AUTHORIZATION"},
+              {"key": "Cookie", "value": "session=CANARY_COLLECTION_COOKIE"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"password\":\"CANARY_COLLECTION_PASSWORD\",\"clientsecret\":\"CANARY_COLLECTION_CLIENT_SECRET\"}",
+              "options": {"raw": {"language": "json"}}
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

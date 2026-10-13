@@ -1,0 +1,4 @@
+{
+  "name": "CANARY_GLOBAL_NAME",
+  "values": [{"key": "clientsecret", "value": "CANARY_GLOBAL_CLIENT_SECRET"}]
+}

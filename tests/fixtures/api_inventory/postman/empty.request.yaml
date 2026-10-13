@@ -1,0 +1,8 @@
+$kind: http-request
+name: Synthetic empty URL
+url: ''
+method: GET
+settings: {}
+order: 2000
+headers:
+  Authorization: Bearer CANARY_EMPTY_AUTHORIZATION

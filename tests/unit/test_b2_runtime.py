@@ -275,16 +275,16 @@ def test_response_assertion_failure_retains_applied_cleanup_material(monkeypatch
     assert not Context.is_case_passed("WRITE")
 
 
-def test_require_change_remains_enforced_with_not_applied_material(monkeypatch):
+def test_require_change_failure_promotes_not_applied_material_to_unknown(monkeypatch):
     events = []
     captures(monkeypatch, events, after_name="Test User Baseline")
     case = root_case()
     case["effect"]["require_change"] = True
     with pytest.raises(AssertionError, match="diff"):
         CaseRunner.run(case, lambda host: Client(events), "fake cookie")
-    assert Context.get_effect_state("WRITE") == "not_applied"
+    assert Context.get_effect_state("WRITE") == "unknown"
     assert Context.get_effect("WRITE")["restore_payload"]["payload"]
-    assert not Context.needs_cleanup("WRITE")
+    assert Context.needs_cleanup("WRITE")
 
 
 @pytest.mark.parametrize("region", ["json", "data", "files"])

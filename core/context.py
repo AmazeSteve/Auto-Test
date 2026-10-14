@@ -148,6 +148,25 @@ class Context:
             cls._data["effects"][case_id]["error"] = str(error)
 
     @classmethod
+    def promote_not_applied_to_unknown(cls, case_id, error):
+        """保留完整恢复证据，仅提升带显式恢复材料的 NOT_APPLIED。"""
+        effect = cls.get_effect(case_id)
+        if (
+            not effect
+            or effect.get("state") != cls.EFFECT_NOT_APPLIED
+            or not effect.get("restore_payload")
+        ):
+            return False
+
+        effect["state"] = cls.EFFECT_UNKNOWN
+        effect["applied"] = False
+        effect["post_send_failure"] = {
+            "reason": "post_send_processing_failed",
+            "error_type": type(error).__name__,
+        }
+        return True
+
+    @classmethod
     def mark_effect_restored(cls, case_id, rollback_case_id=None):
         cls._ensure_structure()
         effect = cls._data["effects"].get(case_id)

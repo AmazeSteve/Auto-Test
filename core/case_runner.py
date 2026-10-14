@@ -307,91 +307,114 @@ class CaseRunner:
             raise
         # destructive 请求发出后，先确认真实业务状态，再执行普通响应断言。
         # 即使后续断言失败，Effect 状态仍已记录，rollback 不会被 case_passed 拦住。
-        if effect_enabled:
-            try:
-                effect_after = EffectExecutor.capture_after(
-                    case=case,
-                    api_client_factory=api_client_factory,
-                    admin_cookie=admin_cookie,
-                    header_builder=cls.build_header,
-                )
-
-                effect_snapshot = cls._build_effect_snapshot(
-                    case=case,
-                    before=effect_before,
-                    after=effect_after,
-                )
-
-                effect_state = (
-                    Context.EFFECT_APPLIED
-                    if effect_snapshot["diff"]
-                    else Context.EFFECT_NOT_APPLIED
-                )
-
-                Context.mark_effect(
-                    case_id=case["id"],
-                    metadata=case.get("effect", {}),
-                    snapshot=effect_snapshot,
-                    state=effect_state,
-                    **restore_arguments,
-                )
-                cls._attach_effect_snapshot(
-                    case["id"],
-                    effect_snapshot,
-                )
-            except Exception as exc:
-                cls._mark_effect_unknown(
-                    case=case,
-                    before=effect_before,
-                    error=exc,
-                    **restore_arguments,
-                )
-                raise
-
-        # 响应断言中的运行期变量也需要解析。
-        validations = VariableResolver.resolve(case.get("validate", []))
-
-        # ---------- 8. 断言 ----------
-        # 执行 YAML 中定义的 validate 列表
-        Assertor.run_validations(response, validations)
-        # update 类 Effect 通常要求确实发生变化。
-        # 显式 require_change=true 时，零 diff 直接失败，彻底消灭“假绿”。
-        if effect_enabled:
-            effect_config = case.get("effect", {}) or {}
-            if (
-                    effect_config.get("require_change", False)
-                    and Context.get_effect_state(case["id"])
-                    == Context.EFFECT_NOT_APPLIED
-                ):
-                raise AssertionError(
-                    f"{case['id']} Effect 未发生目标字段变化，"
-                    "diff 为空。请检查测试前置值与目标值是否相同。"
-                )
-        # rollback 写 Case 响应断言通过，只记录“恢复请求已成功执行”。
-        # Effect 状态仍保持 applied/unknown，直到恢复后 verify Case 真正通过。
-        # if cleanup_depends:
-        #     Context.mark_cleanup_targets(case_id=case["id"],effect_case_ids=cleanup_depends)
-        # 增加动态变量提取
-        extract_rules = VariableResolver.resolve(
-            case.get("extract", {})
+        # Full Update 的空 diff 不能证明未监控字段也没有副作用。
+        runtime_restore_ready = (
+            effect_enabled
+            and "request_builder" in case
+            and bool(restore_arguments.get("restore_payload"))
         )
-        # ---------- 9. 提取变量 ----------
-        # 执行 YAML 中定义的 extract 规则，结果自动存入 Context
-        # extracted = Extractor.run_extractors(response, case.get("extract", {}))
-        extracted = Extractor.run_extractors(response,extract_rules)
-        #  增加附件，查看提取的变量数据
+        try:
+            if effect_enabled:
+                try:
+                    effect_after = EffectExecutor.capture_after(
+                        case=case,
+                        api_client_factory=api_client_factory,
+                        admin_cookie=admin_cookie,
+                        header_builder=cls.build_header,
+                    )
 
-        if extracted:
-            allure.attach(
-                # str(extracted),
-                # 提取变量信息脱敏-调试版本暂时注释
-                str(SensitiveDataRedactor.redact(extracted)),
-                name="extracted variables",
-                attachment_type=allure.attachment_type.TEXT
+                    effect_snapshot = cls._build_effect_snapshot(
+                        case=case,
+                        before=effect_before,
+                        after=effect_after,
+                    )
+
+                    effect_state = (
+                        Context.EFFECT_APPLIED
+                        if effect_snapshot["diff"]
+                        else Context.EFFECT_NOT_APPLIED
+                    )
+
+                    Context.mark_effect(
+                        case_id=case["id"],
+                        metadata=case.get("effect", {}),
+                        snapshot=effect_snapshot,
+                        state=effect_state,
+                        **restore_arguments,
+                    )
+                    cls._attach_effect_snapshot(
+                        case["id"],
+                        effect_snapshot,
+                    )
+                except Exception as exc:
+                    effect_record = Context.get_effect(case["id"]) or {}
+                    if not (
+                        runtime_restore_ready
+                        and effect_snapshot is not None
+                        and effect_record.get("snapshot") is effect_snapshot
+                    ):
+                        cls._mark_effect_unknown(
+                            case=case,
+                            before=effect_before,
+                            error=exc,
+                            **restore_arguments,
+                        )
+                    # 完整记录已形成时不得重建 before-only 快照。
+                    raise
+
+            # 响应断言中的运行期变量也需要解析。
+            validations = VariableResolver.resolve(case.get("validate", []))
+
+            # ---------- 8. 断言 ----------
+            # 执行 YAML 中定义的 validate 列表
+            Assertor.run_validations(response, validations)
+            # update 类 Effect 通常要求确实发生变化。
+            # 显式 require_change=true 时，零 diff 直接失败，彻底消灭“假绿”。
+            if effect_enabled:
+                effect_config = case.get("effect", {}) or {}
+                if (
+                        effect_config.get("require_change", False)
+                        and Context.get_effect_state(case["id"])
+                        == Context.EFFECT_NOT_APPLIED
+                    ):
+                    raise AssertionError(
+                        f"{case['id']} Effect 未发生目标字段变化，"
+                        "diff 为空。请检查测试前置值与目标值是否相同。"
+                    )
+            # rollback 写 Case 响应断言通过，只记录“恢复请求已成功执行”。
+            # Effect 状态仍保持 applied/unknown，直到恢复后 verify Case 真正通过。
+            # if cleanup_depends:
+            #     Context.mark_cleanup_targets(case_id=case["id"],effect_case_ids=cleanup_depends)
+            # 增加动态变量提取
+            extract_rules = VariableResolver.resolve(
+                case.get("extract", {})
             )
-        # 恢复后验证通过，Effect 生命周期才真正进入 restored。
-        # cls._mark_verified_restore(case)
-        Context.mark_case_passed(case.get("id"))
+            # ---------- 9. 提取变量 ----------
+            # 执行 YAML 中定义的 extract 规则，结果自动存入 Context
+            # extracted = Extractor.run_extractors(response, case.get("extract", {}))
+            extracted = Extractor.run_extractors(response,extract_rules)
+            #  增加附件，查看提取的变量数据
+
+            if extracted:
+                allure.attach(
+                    # str(extracted),
+                    # 提取变量信息脱敏-调试版本暂时注释
+                    str(SensitiveDataRedactor.redact(extracted)),
+                    name="extracted variables",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+            # 恢复后验证通过，Effect 生命周期才真正进入 restored。
+            # cls._mark_verified_restore(case)
+            Context.mark_case_passed(case.get("id"))
+        except Exception as exc:
+            if runtime_restore_ready:
+                effect_record = Context.get_effect(case["id"]) or {}
+                if (
+                    effect_snapshot is not None
+                    and effect_record.get("snapshot") is effect_snapshot
+                ):
+                    Context.promote_not_applied_to_unknown(case["id"], exc)
+            raise
         # 加入上下文内容至附件
         allure.attach(
             # str(Context.all()),

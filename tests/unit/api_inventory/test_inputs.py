@@ -46,7 +46,12 @@ def test_escaping_directory_symlink_is_rejected(tmp_path):
     source.mkdir()
     outside = tmp_path / "outside.java"
     outside.write_text("class Private {}", encoding="utf-8")
-    (source / "escape.java").symlink_to(outside)
+    try:
+        (source / "escape.java").symlink_to(outside)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Symlink creation is unavailable without Windows symlink privilege")
+        raise
     with pytest.raises(ValueError):
         list(iter_files(source, {".java"}))
 

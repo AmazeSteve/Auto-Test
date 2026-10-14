@@ -361,7 +361,12 @@ def test_existing_report_filename_links_cannot_mutate_other_assets(tmp_path, lin
     names = ("api_inventory.json", "api_inventory.csv", "coverage_summary.json", "unresolved.csv", "duplicates.csv", "api_inventory_report.md", "priority_queue.csv")
     for name in names:
         if link_kind == "symlink":
-            (output / name).symlink_to(original)
+            try:
+                (output / name).symlink_to(original)
+            except OSError as exc:
+                if getattr(exc, "winerror", None) == 1314:
+                    pytest.skip("Symlink creation is unavailable without Windows symlink privilege")
+                raise
         else:
             os.link(original, output / name)
     _reports(output, classify([_api()]))

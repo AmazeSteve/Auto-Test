@@ -15,5 +15,5 @@ def test_user_update_lifecycle_acceptance(request, monkeypatch):
     cases = load_cases()
     with safe_evidence(monkeypatch):
         factory = request.getfixturevalue("api_client_factory")
-        cookie = request.getfixturevalue("admin_cookie")
-        accept_lifecycle(cases[ROOT_CASE_ID], cases, factory, cookie, request, monkeypatch)
+        provider = request.getfixturevalue("credential_provider")
+        accept_lifecycle(cases[ROOT_CASE_ID], cases, factory, provider, request, monkeypatch)

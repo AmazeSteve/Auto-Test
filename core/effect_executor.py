@@ -15,7 +15,8 @@ import allure
 from wizbank_api_test.core.case_normalizer import CaseNormalizer
 from wizbank_api_test.core.client import (
     get_principal_client, reject_anonymous_auth_headers, runtime_principal,
-    validate_admin_credential_host,
+    resolve_runtime_credential,
+    auth_secret_values, redact_auth_evidence, sanitize_auth_exception,
 )
 from wizbank_api_test.core.endpoint_registry import EndpointRegistry
 from wizbank_api_test.core.response_parser import ResponseParser
@@ -26,12 +27,12 @@ class EffectExecutor:
     """执行 destructive Case 的 before / after 状态采集。"""
 
     @classmethod
-    def capture_before(cls,case:dict,api_client_factory,admin_cookie:str,header_builder):
+    def capture_before(cls,case:dict,api_client_factory,credential_provider,header_builder):
       return cls._capture(
           case=case,
           phase='before',
           api_client_factory=api_client_factory,
-          admin_cookie=admin_cookie,
+          credential_provider=credential_provider,
           header_builder=header_builder,
       )
 
@@ -40,14 +41,14 @@ class EffectExecutor:
             cls,
             case: dict,
             api_client_factory,
-            admin_cookie: str,
+            credential_provider,
             header_builder,
     ):
         return cls._capture(
             case=case,
             phase="after",
             api_client_factory=api_client_factory,
-            admin_cookie=admin_cookie,
+            credential_provider=credential_provider,
             header_builder=header_builder,
         )
     @classmethod
@@ -56,7 +57,7 @@ class EffectExecutor:
         case: dict,
         phase: str,
         api_client_factory,
-        admin_cookie: str,
+        credential_provider,
         header_builder,
     ):
         effect_config = case.get('effect', {}) or {}
@@ -72,11 +73,11 @@ class EffectExecutor:
             capture_config=phase_config,
             phase=phase,
             api_client_factory=api_client_factory,
-            admin_cookie=admin_cookie,
+            credential_provider=credential_provider,
             header_builder=header_builder,
         )
     @classmethod
-    def execute_capture(cls, case, capture_config,phase, api_client_factory, admin_cookie, header_builder):
+    def execute_capture(cls, case, capture_config,phase, api_client_factory, credential_provider, header_builder):
 
         """
         执行一次 Effect Capture。
@@ -114,51 +115,47 @@ class EffectExecutor:
             case.get("host", "Host-be"),
         )
         principal = runtime_principal(capture_case.get("auth"))
-        validate_admin_credential_host(host_key, principal)
         api_client = get_principal_client(api_client_factory, host_key, principal)
+        credential = resolve_runtime_credential(credential_provider, api_client, host_key, principal)
 
         method = str(capture_case["method"]).upper()
         path = VariableResolver.resolve(capture_case["path"])
         params = VariableResolver.resolve(capture_case.get("params", {}))
-        headers = header_builder(capture_case, admin_cookie)
+        headers = header_builder({**capture_case, "host": host_key}, credential)
         if principal == "none":
             reject_anonymous_auth_headers(headers)
         json_body = VariableResolver.resolve(capture_case.get("json"))
         data = VariableResolver.resolve(capture_case.get("data"))
         files = VariableResolver.resolve(capture_case.get("files"))
         allow_redirects = capture_case.get("allow_redirects", True)
+        evidence_headers = {**getattr(api_client, "default_headers", {}), **headers}
+        sensitive_values = auth_secret_values(evidence_headers, getattr(api_client, "session", None))
 
         with allure.step(
                 f"Effect capture {phase}: {endpoint_id}"
         ):
-            response = api_client.request(
-                method=method,
-                path=path,
-                params=params,
-                headers=headers,
-                json=json_body,
-                data=data,
-                files=files,
-                allow_redirects=allow_redirects,
-            )
-            # 将副作用影响Effect 响应结果获取
-            payload = ResponseParser.parse_json(response)
-            cls._validate_capture_response(
-                response=response,
-                payload=payload,
-                capture_config=capture_config,
-                case_id=case.get("id", "UNKNOWN"),
-                phase=phase,
-                endpoint_id=endpoint_id,
-            )
-            # 将副作用影响Effect 响应结果 挂载到报告中
-            allure.attach(
-                # str(payload),
-                #  暂时注释脱敏，用于查阅调试结果
-                str(SensitiveDataRedactor.redact(payload)),
-                name=f"effect capture {phase} payload",
-                attachment_type=allure.attachment_type.TEXT,
-            )
+            try:
+                response = api_client.request(
+                    method=method, path=path, params=params, headers=headers,
+                    json=json_body, data=data, files=files, allow_redirects=allow_redirects,
+                )
+                sensitive_values.update(auth_secret_values(evidence_headers, getattr(api_client, "session", None)))
+                payload = ResponseParser.parse_json(response)
+                cls._validate_capture_response(
+                    response=response, payload=payload, capture_config=capture_config,
+                    case_id=case.get("id", "UNKNOWN"), phase=phase, endpoint_id=endpoint_id,
+                )
+                allure.attach(
+                    str(redact_auth_evidence(payload, sensitive_values)),
+                    name=f"effect capture {phase} payload",
+                    attachment_type=allure.attachment_type.TEXT,
+                )
+            except Exception as exc:
+                sensitive_values.update(auth_secret_values(evidence_headers, getattr(api_client, "session", None)))
+                safe_error = sanitize_auth_exception(exc, sensitive_values)
+                if safe_error is exc:
+                    raise
+                raise safe_error from None
 
         return copy.deepcopy(payload)
 

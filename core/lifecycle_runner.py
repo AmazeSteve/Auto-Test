@@ -153,7 +153,7 @@ class LifecycleRunner:
         return runtime_case
 
     @classmethod
-    def run_case(cls,case:dict,api_client_factory,admin_cookie: str,request,*,bypass_case_passed=None,apply_metadata:bool = True):
+    def run_case(cls,case:dict,api_client_factory,credential_provider,request,*,bypass_case_passed=None,apply_metadata:bool = True):
         """运行普通单 Case，生命周期策略仍由本层统一检查。"""
         cls._check_destructive_permission(case,request)
         cls._check_contract_experiment_permission(case, request)
@@ -163,7 +163,7 @@ class LifecycleRunner:
         return CaseRunner.run(
             runtime_case,
             api_client_factory,
-            admin_cookie,
+            credential_provider,
             apply_metadata=apply_metadata,
             depends_on=depends_on,
         )
@@ -220,7 +220,7 @@ class LifecycleRunner:
             phase: str,
             case: dict,
             api_client_factory,
-            admin_cookie: str,
+            credential_provider,
             request,
             *,
             bypass_case_passed=None,
@@ -232,7 +232,7 @@ class LifecycleRunner:
             return cls.run_case(
                 case,
                 api_client_factory,
-                admin_cookie,
+                credential_provider,
                 request,
                 bypass_case_passed=bypass_case_passed,
                 apply_metadata=False,
@@ -306,7 +306,7 @@ class LifecycleRunner:
             root_case: dict,
             case_map: dict,
             api_client_factory,
-            admin_cookie: str,
+            credential_provider,
             request,
     ):
         """在一个 pytest 调用栈内执行完整 A -> B -> A 生命周期。"""
@@ -348,14 +348,14 @@ class LifecycleRunner:
                 "modify",
                 root_case,
                 api_client_factory,
-                admin_cookie,
+                credential_provider,
                 request,
             )
             cls._run_phase(
                 "verify",
                 lifecycle_cases["verify"],
                 api_client_factory,
-                admin_cookie,
+                credential_provider,
                 request,
             )
         except Exception as exc:
@@ -373,7 +373,7 @@ class LifecycleRunner:
                         "rollback",
                         rollback_case,
                         api_client_factory,
-                        admin_cookie,
+                        credential_provider,
                         request,
                         bypass_case_passed=cleanup_depends,
                     )
@@ -386,7 +386,7 @@ class LifecycleRunner:
                         "verify_rollback",
                         lifecycle_cases["verify_rollback"],
                         api_client_factory,
-                        admin_cookie,
+                        credential_provider,
                         request,
                     )
                     cls._verify_contract_restore_snapshot(

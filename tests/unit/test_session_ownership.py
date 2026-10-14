@@ -37,6 +37,10 @@ class FakeConfig:
         assert principal == "admin"
         return {"username": "offline-admin", "password": "offline-password"}
 
+    def get_credential_user(self, host_key, principal):
+        assert host_key == "Host-be"
+        return self.get_user(principal)
+
 
 class CookieAdapter(BaseAdapter):
     """Let real Requests prepare requests and extract response cookies offline."""
@@ -120,7 +124,9 @@ def test_admin_login_fixture_owns_admin_session_and_cannot_pollute_anonymous():
     adapter = attach(admin, "SESSION=OFFLINE_ADMIN; Path=/; HttpOnly")
     original_context = deepcopy(Context._data)
 
-    cookie = fixtures.admin_cookie.__wrapped__(service)
+    provider = fixtures.credential_provider.__wrapped__(get_client, config)
+    assert adapter.requests == []
+    cookie = fixtures.admin_cookie.__wrapped__(provider)
 
     assert cookie == "SESSION=OFFLINE_ADMIN; Path=/; HttpOnly"
     assert admin.session.cookies.get("SESSION") == "OFFLINE_ADMIN"

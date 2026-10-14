@@ -25,8 +25,10 @@ import  allure
 from wizbank_api_test.core.assertions import Assertor
 from wizbank_api_test.core.client import (
     get_principal_client, reject_anonymous_auth_headers, runtime_principal,
-    validate_admin_credential_host,
+    resolve_runtime_credential,
+    auth_secret_values, redact_auth_evidence, sanitize_auth_exception,
 )
+from wizbank_api_test.services.credential_provider import Credential
 from wizbank_api_test.core.context import Context
 from wizbank_api_test.core.effect_collector import EffectCollector
 from wizbank_api_test.core.effect_executor import EffectExecutor
@@ -91,20 +93,25 @@ class CaseRunner:
         allure.dynamic.parameter("depends_on", depends_on)
 
     @classmethod
-    def build_header(cls,case:dict,admin_cookie:str)->dict:
+    def build_header(cls,case:dict,credential=None)->dict:
     # ---------- 4. 认证与请求头 ----------
 
         auth = runtime_principal(case.get("auth"))
-        validate_admin_credential_host(case.get("host", "Host-be"), auth)
         headers = (case.get("headers", {}) or {}).copy()
         if auth == "none":
+            if credential is not None:
+                raise ValueError("Anonymous requests cannot receive a Credential")
             reject_anonymous_auth_headers(headers)
-
-        # 若 auth 为 "admin"，则将 admin_cookie 注入 Cookie 头
-        # 注意：admin_cookie 应是字符串（如 "SESSION=xxx"），此处直接赋值
-        if auth == "admin":
-            headers['Cookie'] = admin_cookie
-        return VariableResolver.resolve(headers)
+            return VariableResolver.resolve(headers)
+        if not isinstance(credential, Credential):
+            raise ValueError("Authenticated requests require a Credential")
+        credential.assert_matches(case.get("host", "Host-be"), auth)
+        headers = {
+            key: value for key, value in headers.items() if str(key).casefold() != "cookie"
+        }
+        headers = VariableResolver.resolve(headers)
+        headers["Cookie"] = credential.cookie
+        return headers
     """
     增加--- effect 处理
     """
@@ -135,11 +142,11 @@ class CaseRunner:
         )
 
     @staticmethod
-    def _attach_effect_snapshot(case_id: str, snapshot: dict):
+    def _attach_effect_snapshot(case_id: str, snapshot: dict, sensitive_values=()):
         allure.attach(
             json.dumps(
                 # snapshot,
-                SensitiveDataRedactor.redact(snapshot),
+                redact_auth_evidence(snapshot, sensitive_values),
                 ensure_ascii=False,
                 indent=2,
                 default=str,
@@ -188,7 +195,7 @@ class CaseRunner:
             )
 
     @classmethod
-    def _mark_effect_unknown(cls,case: dict,before,error,restore_payload=_UNSET):
+    def _mark_effect_unknown(cls,case: dict,before,error,restore_payload=_UNSET,*,sensitive_values=()):
         """
       在 before 已成功时，会先调用 EffectCollector.pick_fields
       将 before 原始 payload 转换为逻辑字段快照，
@@ -225,16 +232,16 @@ class CaseRunner:
             error=error,
             **restore_arguments,
         )
-        cls._attach_effect_snapshot(case["id"], snapshot)
+        cls._attach_effect_snapshot(case["id"], snapshot, sensitive_values)
 
     @classmethod
-    def run(cls,case:dict,api_client_factory,admin_cookie:str,*,apply_metadata:bool = True,depends_on=None):
+    def run(cls,case:dict,api_client_factory,credential_provider,*,apply_metadata:bool = True,depends_on=None):
         """执行一条 Case，不处理跨 Case 依赖与 rollback 编排。"""
         # 获取当前case指定的Host YAML没写就默认走Host-be 写了就走指定的Host
         host_key = case.get("host", "Host-be")
         principal = runtime_principal(case.get("auth"))
-        validate_admin_credential_host(host_key, principal)
         api_client = get_principal_client(api_client_factory, host_key, principal)
+        credential = resolve_runtime_credential(credential_provider, api_client, host_key, principal)
 
         if apply_metadata:
             cls.apply_allure_metadata(
@@ -252,7 +259,9 @@ class CaseRunner:
         # 对 params、json、data 进行递归解析，替换 {{key}} 和 $timestamp_ms
         # headers 已在发送前完成变量解析
         params = VariableResolver.resolve(case.get("params", {}))
-        headers = cls.build_header(case,admin_cookie)
+        headers = cls.build_header(case,credential)
+        evidence_headers = {**getattr(api_client, "default_headers", {}), **headers}
+        sensitive_values = auth_secret_values(evidence_headers, getattr(api_client, "session", None))
         literal_runtime_json = "request_builder" in case or "restore_payload" in case
         json_body = (
             deepcopy(case.get("json"))
@@ -278,7 +287,7 @@ class CaseRunner:
             effect_before = EffectExecutor.capture_before(
                 case=case,
                 api_client_factory=api_client_factory,
-                admin_cookie=admin_cookie,
+                credential_provider=credential_provider,
                 header_builder=cls.build_header
             )
         if "request_builder" in case:
@@ -304,16 +313,22 @@ class CaseRunner:
                 **({"literal_json": True} if literal_runtime_json else {}),
             )
         except Exception as exc:
+            sensitive_values.update(auth_secret_values(evidence_headers, getattr(api_client, "session", None)))
+            safe_error = sanitize_auth_exception(exc, sensitive_values)
             # destructive 请求一旦开始发送，连接级异常无法证明服务端没有生效。
             # 保守标记 unknown，使后续 rollback 获得执行机会。
             if effect_enabled:
                 cls._mark_effect_unknown(
                     case=case,
                     before=effect_before,
-                    error=exc,
+                    error=safe_error,
+                    sensitive_values=sensitive_values,
                     **restore_arguments,
                 )
-            raise
+            if safe_error is exc:
+                raise
+            raise safe_error from None
+        sensitive_values.update(auth_secret_values(evidence_headers, getattr(api_client, "session", None)))
         # destructive 请求发出后，先确认真实业务状态，再执行普通响应断言。
         # 即使后续断言失败，Effect 状态仍已记录，rollback 不会被 case_passed 拦住。
         # Full Update 的空 diff 不能证明未监控字段也没有副作用。
@@ -328,7 +343,7 @@ class CaseRunner:
                     effect_after = EffectExecutor.capture_after(
                         case=case,
                         api_client_factory=api_client_factory,
-                        admin_cookie=admin_cookie,
+                        credential_provider=credential_provider,
                         header_builder=cls.build_header,
                     )
 
@@ -354,8 +369,10 @@ class CaseRunner:
                     cls._attach_effect_snapshot(
                         case["id"],
                         effect_snapshot,
+                        sensitive_values,
                     )
                 except Exception as exc:
+                    safe_error = sanitize_auth_exception(exc, sensitive_values)
                     effect_record = Context.get_effect(case["id"]) or {}
                     if not (
                         runtime_restore_ready
@@ -365,11 +382,14 @@ class CaseRunner:
                         cls._mark_effect_unknown(
                             case=case,
                             before=effect_before,
-                            error=exc,
+                            error=safe_error,
+                            sensitive_values=sensitive_values,
                             **restore_arguments,
                         )
                     # 完整记录已形成时不得重建 before-only 快照。
-                    raise
+                    if safe_error is exc:
+                        raise
+                    raise safe_error from None
 
             # 响应断言中的运行期变量也需要解析。
             validations = VariableResolver.resolve(case.get("validate", []))
@@ -408,7 +428,7 @@ class CaseRunner:
                 allure.attach(
                     # str(extracted),
                     # 提取变量信息脱敏-调试版本暂时注释
-                    str(SensitiveDataRedactor.redact(extracted)),
+                    str(redact_auth_evidence(extracted, sensitive_values)),
                     name="extracted variables",
                     attachment_type=allure.attachment_type.TEXT
                 )
@@ -416,19 +436,22 @@ class CaseRunner:
             # cls._mark_verified_restore(case)
             Context.mark_case_passed(case.get("id"))
         except Exception as exc:
+            safe_error = sanitize_auth_exception(exc, sensitive_values)
             if runtime_restore_ready:
                 effect_record = Context.get_effect(case["id"]) or {}
                 if (
                     effect_snapshot is not None
                     and effect_record.get("snapshot") is effect_snapshot
                 ):
-                    Context.promote_not_applied_to_unknown(case["id"], exc)
-            raise
+                    Context.promote_not_applied_to_unknown(case["id"], safe_error)
+            if safe_error is exc:
+                raise
+            raise safe_error from None
         # 加入上下文内容至附件
         allure.attach(
             # str(Context.all()),
             # 上下文存取信息脱敏-调试版本暂时注释
-            str(SensitiveDataRedactor.redact(Context.all())),
+            str(redact_auth_evidence(Context.all(), sensitive_values)),
             name="context after effect",
             attachment_type=allure.attachment_type.TEXT
         )
@@ -440,7 +463,7 @@ class CaseRunner:
         allure.attach(
             # str(Context.snapshot()),
             # 上下文前后快照存取信息脱敏-调试版本暂时注释
-            str(SensitiveDataRedactor.redact(Context.snapshot())),
+            str(redact_auth_evidence(Context.snapshot(), sensitive_values)),
             name="runtime context snapshot",
             attachment_type=allure.attachment_type.TEXT
         )

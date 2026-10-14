@@ -16,5 +16,5 @@ def test_user_update_preflight(request, monkeypatch):
     # Fixtures that can log in are requested only AFTER the explicit target gate.
     with safe_evidence(monkeypatch):
         factory = request.getfixturevalue("api_client_factory")
-        cookie = request.getfixturevalue("admin_cookie")
-        preflight(cases[ROOT_CASE_ID], cases, factory, cookie, request)
+        provider = request.getfixturevalue("credential_provider")
+        preflight(cases[ROOT_CASE_ID], cases, factory, provider, request)

@@ -6,6 +6,7 @@
 import inspect
 import json
 from copy import deepcopy
+from http.cookies import CookieError, SimpleCookie
 
 
 import requests
@@ -23,20 +24,102 @@ def normalize_principal(principal):
 
 
 def runtime_principal(auth):
-    principal = normalize_principal(auth)
-    if principal == "learner":
-        raise ValueError("Learner authentication is unavailable in v2.5B-2A")
-    return principal
+    return normalize_principal(auth)
 
 
-def validate_admin_credential_host(host_key, principal):
-    if principal == "admin" and host_key != "Host-be":
-        raise ValueError("Compatibility admin credentials are only supported for Host-be")
+def assert_client_identity(client, host_key, principal):
+    """Authenticated credentials and transport must share an explicit identity."""
+    principal = normalize_principal(principal)
+    if (
+        getattr(client, "host_key", None) != host_key
+        or getattr(client, "principal", None) != principal
+        or getattr(client, "session", None) is None
+    ):
+        raise ValueError("Authentication transport identity mismatch")
+
+
+def resolve_runtime_credential(provider, client, host_key, principal):
+    if principal == "none":
+        return None
+    from wizbank_api_test.services.credential_provider import Credential
+
+    try:
+        assert_client_identity(client, host_key, principal)
+        provider.assert_client_matches(client, host_key, principal)
+        credential = provider.get(host_key, principal)
+        if not isinstance(credential, Credential):
+            raise ValueError("Authenticated runtime requires a Credential")
+        credential.assert_matches(host_key, principal)
+        provider.assert_client_matches(client, host_key, principal)
+        return credential
+    except Exception:
+        raise ValueError("Runtime credential identity or acquisition failed") from None
 
 
 def reject_anonymous_auth_headers(headers):
     if any(str(name).casefold() in ("cookie", "authorization") for name in (headers or {})):
         raise ValueError("Anonymous requests cannot contain Cookie or Authorization headers")
+
+
+def auth_secret_values(headers, session=None):
+    """Known request/owned-Session secrets, used only at diagnostic boundaries."""
+    values = set()
+    for key, value in (headers or {}).items():
+        if not isinstance(value, str) or not value:
+            continue
+        name = str(key).casefold()
+        if name in ("cookie", "authorization"):
+            values.add(value)
+        if name == "cookie":
+            cookies = SimpleCookie()
+            try:
+                cookies.load(value)
+            except CookieError:
+                pass
+            values.update(item.value for item in cookies.values() if item.value)
+        elif name == "authorization" and " " in value:
+            values.add(value.split(" ", 1)[1])
+    for cookie in getattr(session, "cookies", ()):
+        value = getattr(cookie, "value", None)
+        if isinstance(value, str) and value:
+            values.add(value)
+    return values
+
+
+def redact_auth_evidence(value, sensitive_values=()):
+    secrets = sorted(set(sensitive_values), key=len, reverse=True)
+
+    def replace(item):
+        if isinstance(item, str):
+            for secret in secrets:
+                item = item.replace(secret, SensitiveDataRedactor.REDACTED)
+            return item
+        if isinstance(item, dict):
+            return {replace(key): replace(val) for key, val in item.items()}
+        if isinstance(item, (list, tuple)):
+            return type(item)(replace(val) for val in item)
+        return item
+
+    return replace(SensitiveDataRedactor.redact(value))
+
+
+def sanitize_auth_exception(error, sensitive_values=()):
+    if not sensitive_values:
+        return error
+    pending, seen = [error], set()
+    try:
+        while pending:
+            current = pending.pop()
+            if id(current) in seen:
+                continue
+            seen.add(id(current))
+            current.args = tuple(redact_auth_evidence(arg, sensitive_values) for arg in current.args)
+            if any(value in str(current) for value in sensitive_values):
+                return ValueError("Authenticated request processing failed")
+            pending.extend(item for item in (current.__cause__, current.__context__) if item is not None)
+    except Exception:
+        return ValueError("Authenticated request processing failed")
+    return error
 
 
 def get_principal_client(api_client_factory, host_key, principal):
@@ -103,9 +186,10 @@ class ApiClient:
             "access_token",
             "refresh_token",
         }
-    def __init__(self,base_url:str,default_headers=None,timeout=30,verify_ssl=False,*,principal=None):
+    def __init__(self,base_url:str,default_headers=None,timeout=30,verify_ssl=False,*,principal=None,host_key=None):
         # Existing direct construction remains compatible; factory clients are explicit.
         self.principal = normalize_principal(principal) if principal is not None else None
+        self.host_key = host_key
         if self.principal == "none":
             reject_anonymous_auth_headers(default_headers)
         self.base_url = base_url.rstrip('/')
@@ -133,7 +217,15 @@ class ApiClient:
 
         # 给到变量解释器迭代获取数据
         resolved_params = VariableResolver.resolve(params or {})
-        resolved_headers = VariableResolver.resolve(headers or {})
+        request_headers = headers or {}
+        literal_cookies = {
+            key: deepcopy(value) for key, value in request_headers.items()
+            if self.principal in ("admin", "learner") and str(key).casefold() == "cookie"
+        }
+        resolved_headers = VariableResolver.resolve({
+            key: value for key, value in request_headers.items() if key not in literal_cookies
+        })
+        resolved_headers.update(literal_cookies)
         # 避免乱传
         resolved_json = (
             (deepcopy(json) if literal_json else VariableResolver.resolve(json))
@@ -150,6 +242,7 @@ class ApiClient:
         final_headers = {}
         final_headers.update(self.default_headers)
         final_headers.update(resolved_headers)
+        sensitive_values = auth_secret_values(final_headers, self.session)
 
 #         通用allure
         """
@@ -159,6 +252,7 @@ class ApiClient:
         
         """
         """脱敏工具调用-调式阶段暂时保留部分信息显示"""
+        login_request = path.lstrip("/").split("?", 1)[0] == "app/user/login/v3"
         request_evidence= {
             "url": url,
             "method": method,
@@ -167,6 +261,8 @@ class ApiClient:
             "json": resolved_json,
             "data": resolved_data,
         }
+        if login_request:
+            request_evidence = {"host_key": self.host_key, "principal": self.principal}
         with allure.step(f"{method.upper()} {path}"):
             # 将解释的数据作为附件写入
             allure.attach(
@@ -185,31 +281,32 @@ class ApiClient:
                     #     "data": self._mask_sensitive(resolved_data),
                     # }
                 #     脱敏工具使用-暂时注释-方便调试
-                    SensitiveDataRedactor.redact(request_evidence)
+                    redact_auth_evidence(request_evidence, sensitive_values)
                 ),
                 name="request",
                 attachment_type=allure.attachment_type.TEXT,
             )
         # 发起请求
-        response =  self.session.request(
-            method = method,
-            url = url,
-            params=resolved_params,
-            headers = final_headers,
-            json=resolved_json,
-            data=resolved_data,
-            files=files,
-            timeout=self.timeout,
-            verify=self.verify_ssl,
-            allow_redirects=allow_redirects,
-        )
+        try:
+            response = self.session.request(
+                method=method, url=url, params=resolved_params, headers=final_headers,
+                json=resolved_json, data=resolved_data, files=files,
+                timeout=self.timeout, verify=self.verify_ssl, allow_redirects=allow_redirects,
+            )
+        except Exception as exc:
+            sensitive_values.update(auth_secret_values(final_headers, self.session))
+            safe_error = sanitize_auth_exception(exc, sensitive_values)
+            if safe_error is exc:
+                raise
+            raise safe_error from None
         # # 响应结果脱敏 现在暂时不使用 保持调试状态
-        safe_response = self._safe_response_text(response)
+        sensitive_values.update(auth_secret_values(final_headers, self.session))
+        safe_response = None if login_request else self._safe_response_text(response, sensitive_values=sensitive_values)
 
         allure.attach(
             # f"status_code:{response.status_code} \n\n{response.text[:5000]}",
             # 响应结果脱敏 现在暂时不使用 保持调试状态
-            f"status_code:{response.status_code} \n\n{safe_response}",
+            f"status_code:{response.status_code}" if login_request else f"status_code:{response.status_code} \n\n{safe_response}",
             name="response",
             attachment_type=allure.attachment_type.TEXT,
         )
@@ -256,10 +353,10 @@ class ApiClient:
         return SensitiveDataRedactor.redact(value)
     # 信息脱敏内置-响应JSON
     @classmethod
-    def _safe_response_text(cls, response,max_length=5000):
+    def _safe_response_text(cls, response,max_length=5000,*,sensitive_values=()):
         try:
             payload = response.json()
-            masked_payload = SensitiveDataRedactor.redact(payload)
+            masked_payload = redact_auth_evidence(payload, sensitive_values)
             text = json.dumps(
                 masked_payload,
                 ensure_ascii=False,
@@ -267,4 +364,4 @@ class ApiClient:
             )
             return text[:max_length]
         except ValueError:
-            return (response.text or "")[:max_length]
+            return redact_auth_evidence(response.text or "", sensitive_values)[:max_length]

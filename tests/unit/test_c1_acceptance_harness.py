@@ -17,11 +17,16 @@ from wizbank_api_test.core.endpoint_registry import EndpointRegistry
 from wizbank_api_test.core.lifecycle_runner import LifecycleRunner
 from wizbank_api_test.core.variable_resolver import VariableResolver
 from wizbank_api_test.services import user_update_acceptance as harness
+from wizbank_api_test.tests.unit.credential_helpers import FakeCredentialProvider
 from wizbank_api_test.services.request_payload_resolver import RequestPayloadResolver
 from wizbank_api_test.utils.recovery_journal import RecoveryJournal
 
 
 USERNAME = "test-user-001"
+
+
+def _provider(factory, cookie="offline cookie"):
+    return FakeCredentialProvider({("Host-be", "admin"): factory("Host-be", principal="admin")}, cookie=cookie)
 
 
 def request_stub(destructive=True, c1=True):
@@ -116,7 +121,7 @@ def setup_harness(tmp_path, monkeypatch):
 
     def make(**kwargs):
         transport = FakeTransport(cases, journal, **kwargs)
-        client = ApiClient("https://example.invalid", verify_ssl=True)
+        client = ApiClient("https://example.invalid", verify_ssl=True, host_key="Host-be", principal="admin")
         monkeypatch.setattr(client.session, "request", transport.request)
         return root, cases, journal, transport, lambda host, principal="none": client
 
@@ -173,7 +178,7 @@ def test_all_dependency_safety_is_checked_before_first_request(setup_harness, mo
     root, cases, journal, transport, factory = setup_harness()
     cases["WB_USER_004"]["destructive"] = True
     with pytest.raises(harness.C1AcceptanceError, match="preflight"):
-        harness.preflight(root, cases, factory, "offline cookie", request_stub())
+        harness.preflight(root, cases, factory, _provider(factory), request_stub())
     assert transport.calls == [] and journal.path is None
 
 
@@ -182,7 +187,7 @@ def test_preflight_stops_after_reads_and_returns_hashes_only(setup_harness, monk
     evidence = []
     monkeypatch.setattr(allure, "attach", lambda body, **kw: evidence.append((kw["name"], body)))
     with harness.safe_evidence(monkeypatch):
-        summary = harness.preflight(root, cases, factory, "private-session-cookie", request_stub())
+        summary = harness.preflight(root, cases, factory, _provider(factory, "private-session-cookie"), request_stub())
     assert summary["READY"] == "YES" and summary["field_count"] == 27
     assert summary["changed_fields"] == ["usr_display_bil"]
     assert transport.updates == [] and len(transport.calls) == 4
@@ -204,9 +209,9 @@ def test_returned_identity_mismatch_fails_before_builder_or_mutation(setup_harne
     with harness.safe_evidence(monkeypatch):
         with pytest.raises((harness.C1SafetyError, harness.C1AcceptanceError)):
             if kind == "preflight":
-                harness.preflight(root, cases, factory, "offline cookie", request_stub())
+                harness.preflight(root, cases, factory, _provider(factory), request_stub())
             else:
-                harness.accept_lifecycle(root, cases, factory, "offline cookie", request_stub(), monkeypatch, journal)
+                harness.accept_lifecycle(root, cases, factory, _provider(factory), request_stub(), monkeypatch, journal)
     assert calls == [] and transport.updates == [] and journal.path is None
 
 
@@ -239,7 +244,7 @@ def test_happy_path_uses_real_lifecycle_writes_journal_before_transport_and_dele
     monkeypatch.setattr(EffectExecutor, "capture_after", observe_capture(EffectExecutor.capture_after))
     monkeypatch.setattr(allure, "attach", lambda body, **kw: evidence.append((kw["name"], body)))
     with harness.safe_evidence(monkeypatch):
-        summary = harness.accept_lifecycle(root, cases, factory, "private-session-cookie", request_stub(), monkeypatch, journal)
+        summary = harness.accept_lifecycle(root, cases, factory, _provider(factory, "private-session-cookie"), request_stub(), monkeypatch, journal)
     assert lifecycle_calls == [harness.ROOT_CASE_ID]
     assert len(transport.updates) == 2 and transport.form_reads == 6
     assert journal.status == "deleted" and not journal.path.exists()
@@ -268,7 +273,7 @@ def test_non_target_mutation_drift_fails_acceptance_and_retains_journal(setup_ha
     root, cases, journal, transport, factory = setup_harness(mutation_drift=(field, value))
     with harness.safe_evidence(monkeypatch):
         with pytest.raises(harness.C1AcceptanceError, match="recovery journal"):
-            harness.accept_lifecycle(root, cases, factory, "offline cookie", request_stub(), monkeypatch, journal)
+            harness.accept_lifecycle(root, cases, factory, _provider(factory), request_stub(), monkeypatch, journal)
     assert journal.path.exists() and journal.status == "retained"
     assert len(transport.updates) == 2
 
@@ -277,7 +282,7 @@ def test_final_business_drift_retains_journal_even_when_frozen_lifecycle_says_re
     root, cases, journal, transport, factory = setup_harness(final_drift=("usr_nickname", "unexpected-final-value"))
     with harness.safe_evidence(monkeypatch):
         with pytest.raises(harness.C1AcceptanceError):
-            harness.accept_lifecycle(root, cases, factory, "offline cookie", request_stub(), monkeypatch, journal)
+            harness.accept_lifecycle(root, cases, factory, _provider(factory), request_stub(), monkeypatch, journal)
     assert Context.get_effect_state(root["id"]) == "restored"
     assert journal.path.exists() and journal.status == "retained"
 
@@ -286,7 +291,7 @@ def test_lifecycle_exception_retains_journal_after_existing_finally_cleanup(setu
     root, cases, journal, transport, factory = setup_harness(verify_failure=True)
     with harness.safe_evidence(monkeypatch):
         with pytest.raises(harness.C1AcceptanceError):
-            harness.accept_lifecycle(root, cases, factory, "offline cookie", request_stub(), monkeypatch, journal)
+            harness.accept_lifecycle(root, cases, factory, _provider(factory), request_stub(), monkeypatch, journal)
     assert len(transport.updates) == 2
     assert journal.path.exists() and journal.status == "retained"
 
@@ -300,7 +305,7 @@ def test_journal_storage_failure_stops_before_mutation(setup_harness, monkeypatc
     monkeypatch.setattr(journal, "create", fail_write)
     with harness.safe_evidence(monkeypatch):
         with pytest.raises(harness.C1AcceptanceError):
-            harness.accept_lifecycle(root, cases, factory, "offline cookie", request_stub(), monkeypatch, journal)
+            harness.accept_lifecycle(root, cases, factory, _provider(factory), request_stub(), monkeypatch, journal)
     assert transport.updates == [] and journal.path is None
 
 
@@ -316,7 +321,7 @@ def test_final_evidence_error_does_not_delete_recovery_material(setup_harness, m
     monkeypatch.setattr(allure, "attach", evidence)
     with harness.safe_evidence(monkeypatch):
         with pytest.raises(harness.C1AcceptanceError):
-            harness.accept_lifecycle(root, cases, factory, "offline cookie", request_stub(), monkeypatch, journal)
+            harness.accept_lifecycle(root, cases, factory, _provider(factory), request_stub(), monkeypatch, journal)
     assert journal.path.exists() and journal.status == "retained"
     assert Context.get_effect_state(root["id"]) == "restored"
     assert json.loads(attached[-1][1])["READY"] == "NO"
@@ -354,7 +359,7 @@ def test_default_pending_journal_blocks_acceptance_without_reads_or_new_record(s
     monkeypatch.setattr(allure, "attach", lambda body, **kw: evidence.append(body))
     with harness.safe_evidence(monkeypatch):
         with pytest.raises(harness.C1AcceptanceError, match="count=1") as caught:
-            harness.accept_lifecycle(root, cases, factory, "offline cookie", request_stub(), monkeypatch)
+            harness.accept_lifecycle(root, cases, factory, _provider(factory), request_stub(), monkeypatch)
     assert transport.updates == [] and transport.calls == []
     assert journal.path is None and list(journal.directory.iterdir()) == [old]
     assert old.read_bytes() == contents
@@ -378,7 +383,7 @@ def test_pending_created_during_preparation_is_blocked_by_create_guard(setup_har
     monkeypatch.setattr(harness, "prepare_dependencies", preparation)
     with harness.safe_evidence(monkeypatch):
         with pytest.raises(harness.C1AcceptanceError, match="count=1"):
-            harness.accept_lifecycle(root, cases, factory, "offline cookie", request_stub(), monkeypatch, journal)
+            harness.accept_lifecycle(root, cases, factory, _provider(factory), request_stub(), monkeypatch, journal)
     assert transport.updates == [] and journal.path is None
     assert old.read_bytes() == contents and list(journal.directory.iterdir()) == [old]
 
@@ -390,7 +395,7 @@ def test_preflight_leaves_pending_journal_untouched(setup_harness, monkeypatch):
     contents = b"private-pending-recovery-material"
     old.write_bytes(contents)
     with harness.safe_evidence(monkeypatch):
-        summary = harness.preflight(root, cases, factory, "offline cookie", request_stub())
+        summary = harness.preflight(root, cases, factory, _provider(factory), request_stub())
     assert summary["READY"] == "YES" and transport.updates == []
     assert old.read_bytes() == contents and list(journal.directory.iterdir()) == [old]
 
@@ -401,7 +406,7 @@ def test_stale_tmp_file_does_not_block_happy_path_and_is_not_deleted(setup_harne
     temporary = journal.directory / ".journal-abandoned.tmp"
     temporary.write_bytes(b"private-incomplete-record")
     with harness.safe_evidence(monkeypatch):
-        summary = harness.accept_lifecycle(root, cases, factory, "offline cookie", request_stub(), monkeypatch, journal)
+        summary = harness.accept_lifecycle(root, cases, factory, _provider(factory), request_stub(), monkeypatch, journal)
     assert summary["effect_state"] == "restored" and journal.status == "deleted"
     assert len(transport.updates) == 2 and not journal.path.exists()
     assert temporary.read_bytes() == b"private-incomplete-record"

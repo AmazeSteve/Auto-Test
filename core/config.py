@@ -1,4 +1,6 @@
 from pathlib import Path
+from collections.abc import Mapping
+from copy import deepcopy
 
 import  yaml
 
@@ -38,6 +40,37 @@ class Config:
             raise ValueError(f"users中未配置用户:{user_type}")
 
         return user
+
+    def get_credential_user(self, host_key: str, principal: str) -> dict:
+        """Resolve exact host credentials; legacy users belong only to Host-be."""
+        if (not isinstance(host_key, str) or not host_key
+                or principal not in ("admin", "learner")):
+            raise ValueError("Unsupported credential identity")
+
+        credentials = self.data.get("credentials", {})
+        if not isinstance(credentials, Mapping):
+            raise ValueError("Host-bound credential configuration is invalid")
+        if host_key in credentials:
+            host_credentials = credentials[host_key]
+            if not isinstance(host_credentials, Mapping):
+                raise ValueError("Host-bound credential configuration is invalid")
+            if principal in host_credentials:
+                return self._credential_user(host_credentials[principal])
+
+        if host_key != "Host-be":
+            raise ValueError("Host-bound credential configuration is missing")
+        users = self.data.get("users", {})
+        if not isinstance(users, Mapping) or principal not in users:
+            raise ValueError("Credential configuration is missing")
+        return self._credential_user(users[principal])
+
+    @staticmethod
+    def _credential_user(user) -> dict:
+        if (not isinstance(user, Mapping)
+                or any(not isinstance(user.get(key), str) or not user[key].strip()
+                       for key in ("username", "password"))):
+            raise ValueError("Credential configuration is invalid")
+        return deepcopy(dict(user))
     # 配置文件默认请求头内容 可用update更新
     def get_default_headers(self)->dict:
         return self.data.get('default_headers',{})

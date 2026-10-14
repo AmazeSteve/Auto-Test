@@ -7,7 +7,6 @@ import allure
 import pytest
 from requests.adapters import HTTPAdapter
 
-from wizbank_api_test.core.client import runtime_principal
 from wizbank_api_test.core.context import Context
 from wizbank_api_test.tests import conftest as fixtures
 from wizbank_api_test.tests.unit.test_session_ownership import FakeConfig, attach, factory
@@ -59,23 +58,20 @@ def test_learner_login_fails_before_credentials_and_transport_without_admin_poll
     request_calls = []
     monkeypatch.setattr(allure, "attach", lambda body, **kwargs: evidence.append(str(body)))
 
-    def forbidden_credentials(principal):
-        credential_calls.append(principal)
+    def forbidden_credentials(host_key, principal):
+        credential_calls.append((host_key, principal))
         raise AssertionError(LEARNER_PASSWORD_SECRET)
 
     def forbidden_request(*args, **kwargs):
         request_calls.append((args, kwargs))
         raise AssertionError(ADMIN_COOKIE_SECRET)
 
-    monkeypatch.setattr(config, "get_user", forbidden_credentials)
+    monkeypatch.setattr(config, "get_credential_user", forbidden_credentials)
     monkeypatch.setattr(admin, "post", forbidden_request)
-    with pytest.raises(ValueError) as runtime_error:
-        runtime_principal("learner")
-
     for _ in range(attempts):
         with pytest.raises(ValueError) as raised:
             service.learner_login()
-        assert str(raised.value) == str(runtime_error.value)
+        assert "principal" in str(raised.value).lower()
         for secret in (ADMIN_COOKIE_SECRET, AUTHORIZATION_SECRET, LEARNER_PASSWORD_SECRET):
             assert secret not in str(raised.value)
 
@@ -100,16 +96,17 @@ def test_admin_login_keeps_existing_request_and_cookie_behavior_offline(monkeypa
     evidence = []
     original_context = deepcopy(Context.all())
     credential_calls = []
-    original_get_user = config.get_user
+    original_get_user = config.get_credential_user
 
-    def record_credentials(principal):
+    def record_credentials(host_key, principal):
         credential_calls.append(principal)
-        return original_get_user(principal)
+        return original_get_user(host_key, principal)
 
-    monkeypatch.setattr(config, "get_user", record_credentials)
+    monkeypatch.setattr(config, "get_credential_user", record_credentials)
     monkeypatch.setattr(allure, "attach", lambda body, **kwargs: evidence.append(str(body)))
 
-    assert fixtures.admin_cookie.__wrapped__(service) == cookie
+    provider = fixtures.credential_provider.__wrapped__(get_client, config)
+    assert fixtures.admin_cookie.__wrapped__(provider) == cookie
 
     assert credential_calls == ["admin"]
     assert len(adapter.requests) == 1

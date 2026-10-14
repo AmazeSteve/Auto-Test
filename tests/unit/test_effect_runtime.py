@@ -11,6 +11,7 @@ from wizbank_api_test.core.effect_collector import EffectCollector
 from wizbank_api_test.core.effect_executor import EffectExecutor
 from wizbank_api_test.core.endpoint_registry import EndpointRegistry
 from wizbank_api_test.core.lifecycle_runner import LifecycleRunner
+from wizbank_api_test.tests.unit.credential_helpers import FakeCredentialProvider
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -32,6 +33,9 @@ class FakeClient:
     def __init__(self, response):
         self.response = response
         self.calls = []
+        self.host_key = "Host-be"
+        self.principal = "admin"
+        self.session = object()
 
     def request(self, **kwargs):
         self.calls.append(kwargs)
@@ -113,7 +117,7 @@ def test_effect_capture_reuses_registry_auth_and_variables(
     payload = EffectExecutor.capture_before(
         case=case,
         api_client_factory=factory,
-        admin_cookie="SESSION=abc",
+        credential_provider=FakeCredentialProvider({("Host-be", "admin"): client}, cookie="SESSION=abc"),
         header_builder=CaseRunner.build_header,
     )
 
@@ -156,7 +160,7 @@ def test_effect_capture_rejects_business_failure(loaded_cases):
         EffectExecutor.capture_before(
             case=case,
             api_client_factory=lambda host_key, principal="none": client,
-            admin_cookie="SESSION=abc",
+            credential_provider=FakeCredentialProvider({("Host-be", "admin"): client}, cookie="SESSION=abc"),
             header_builder=CaseRunner.build_header,
         )
 

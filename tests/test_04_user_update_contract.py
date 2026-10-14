@@ -51,7 +51,7 @@ class TestUserUpdateContract:
     def test_update_contract(
         self,
         api_client_factory,
-        admin_cookie,
+        credential_provider,
         request,
         case_id,
     ):
@@ -65,7 +65,7 @@ class TestUserUpdateContract:
                 root_case=case,
                 case_map=CASE_MAP,
                 api_client_factory=api_client_factory,
-                admin_cookie=admin_cookie,
+                credential_provider=credential_provider,
                 request=request,
             )
             return
@@ -73,6 +73,6 @@ class TestUserUpdateContract:
         LifecycleRunner.run_case(
             case=case,
             api_client_factory=api_client_factory,
-            admin_cookie=admin_cookie,
+            credential_provider=credential_provider,
             request=request,
         )

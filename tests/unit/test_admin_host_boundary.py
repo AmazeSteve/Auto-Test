@@ -1,4 +1,4 @@
-"""The Host-be compatibility credential never crosses a Runtime host boundary."""
+"""A typed Host-be credential never crosses a Runtime host boundary."""
 
 from copy import deepcopy
 
@@ -12,7 +12,9 @@ from wizbank_api_test.core.context import Context
 from wizbank_api_test.core.effect_executor import EffectExecutor
 from wizbank_api_test.core.endpoint_registry import EndpointRegistry
 from wizbank_api_test.core.variable_resolver import VariableResolver
+from wizbank_api_test.services.credential_provider import Credential
 from wizbank_api_test.tests import conftest as fixtures
+from wizbank_api_test.tests.unit.credential_helpers import FakeCredentialProvider
 
 
 ADMIN_COOKIE = "SESSION=HOST_BE_PRIVATE_COOKIE"
@@ -28,8 +30,11 @@ class FakeResponse:
 
 
 class FakeClient:
-    def __init__(self):
+    def __init__(self, host_key="Host-be", principal="admin"):
         self.requests = []
+        self.host_key = host_key
+        self.principal = principal
+        self.session = object()
 
     def request(self, **kwargs):
         self.requests.append(deepcopy(kwargs))
@@ -77,25 +82,30 @@ def assert_no_credential(*values):
 
 
 @pytest.mark.parametrize("host", ["Host-226", "Host-156"])
-def test_admin_case_rejects_foreign_host_before_factory_headers_or_transport(monkeypatch, evidence, host):
-    client = FakeClient()
+def test_admin_case_rejects_foreign_credential_before_headers_or_transport(monkeypatch, evidence, host):
+    client = FakeClient(host)
     selections, header_calls = [], []
 
     def factory(host_key, *, principal):
         selections.append((host_key, principal))
         return client
 
-    def header_builder(case, cookie):
+    def header_builder(case, credential):
         header_calls.append(case)
-        return {"Cookie": cookie}
+        return {"Cookie": credential.cookie}
 
     monkeypatch.setattr(CaseRunner, "build_header", header_builder)
     case = case_for(host)
     original = deepcopy(case)
+    provider = FakeCredentialProvider(
+        {(host, "admin"): client},
+        credentials={(host, "admin"): Credential("Host-be", "admin", ADMIN_COOKIE)},
+    )
     with pytest.raises(ValueError) as raised:
-        CaseRunner.run(case, factory, ADMIN_COOKIE)
+        CaseRunner.run(case, factory, provider)
 
-    assert selections == header_calls == client.requests == []
+    assert selections == [(host, "admin")]
+    assert header_calls == client.requests == []
     assert evidence == []
     assert Context.snapshot()["size"] == 0
     assert_no_credential(str(raised.value), evidence, Context.all())
@@ -103,7 +113,7 @@ def test_admin_case_rejects_foreign_host_before_factory_headers_or_transport(mon
 
 
 @pytest.mark.parametrize("host", ["Host-226", "Host-156"])
-def test_direct_admin_header_builder_rejects_foreign_host_before_variable_resolution(monkeypatch, host):
+def test_direct_admin_header_builder_rejects_foreign_credential_before_variable_resolution(monkeypatch, host):
     calls = []
 
     def resolve(value):
@@ -115,7 +125,7 @@ def test_direct_admin_header_builder_rejects_foreign_host_before_variable_resolu
     case["headers"]["Cookie"] = ADMIN_COOKIE
     original = deepcopy(case)
     with pytest.raises(ValueError) as raised:
-        CaseRunner.build_header(case, ADMIN_COOKIE)
+        CaseRunner.build_header(case, Credential("Host-be", "admin", ADMIN_COOKIE))
 
     assert calls == []
     assert_no_credential(str(raised.value), Context.all())
@@ -130,28 +140,34 @@ def test_direct_admin_header_builder_rejects_foreign_host_before_variable_resolu
     pytest.param("Host-be", "Host-be", {"host": "Host-226"}, id="capture-override"),
     pytest.param("Host-226", None, {}, id="root-host-fallback"),
 ])
-def test_admin_capture_rejects_normalized_foreign_host_before_headers_and_transport(
+def test_admin_capture_rejects_foreign_credential_for_normalized_host_before_headers_and_transport(
         monkeypatch, evidence, phase, custom_headers, root_host, endpoint_host, override):
     capture_endpoint(monkeypatch, endpoint_host)
-    client = FakeClient()
+    normalized_host = override.get("host", endpoint_host or root_host)
+    client = FakeClient(normalized_host)
     selections, header_calls = [], []
 
     def factory(host_key, *, principal):
         selections.append((host_key, principal))
         return client
 
-    def custom_header_builder(case, cookie):
+    def custom_header_builder(case, credential):
         header_calls.append(deepcopy(case))
-        return {"Cookie": cookie}
+        return {"Cookie": credential.cookie}
 
     header_builder = custom_header_builder if custom_headers else CaseRunner.build_header
     case = case_for(root_host)
     config = {"endpoint": "OFFLINE_CAPTURE", **override}
     original = deepcopy((case, config))
+    provider = FakeCredentialProvider(
+        {(normalized_host, "admin"): client},
+        credentials={(normalized_host, "admin"): Credential("Host-be", "admin", ADMIN_COOKIE)},
+    )
     with pytest.raises(ValueError) as raised:
-        EffectExecutor.execute_capture(case, config, phase, factory, ADMIN_COOKIE, header_builder)
+        EffectExecutor.execute_capture(case, config, phase, factory, provider, header_builder)
 
-    assert selections == header_calls == client.requests == []
+    assert selections == [(normalized_host, "admin")]
+    assert header_calls == client.requests == []
     assert evidence == []
     assert Context.snapshot()["size"] == 0
     assert_no_credential(str(raised.value), evidence, Context.all())
@@ -171,7 +187,8 @@ def test_foreign_anonymous_root_can_capture_host_be_admin_using_capture_identity
     case = case_for("Host-226", "none")
     config = {"endpoint": "OFFLINE_CAPTURE"}
     original = deepcopy((case, config))
-    result = EffectExecutor.execute_capture(case, config, phase, factory, ADMIN_COOKIE, CaseRunner.build_header)
+    provider = FakeCredentialProvider({("Host-be", "admin"): client}, cookie=ADMIN_COOKIE)
+    result = EffectExecutor.execute_capture(case, config, phase, factory, provider, CaseRunner.build_header)
 
     assert selections == [("Host-be", "admin")]
     assert result == FakeResponse().json()
@@ -191,7 +208,7 @@ def test_host_be_admin_root_can_capture_foreign_anonymous_host(monkeypatch, evid
         return client
 
     EffectExecutor.execute_capture(case_for(), {"endpoint": "OFFLINE_CAPTURE"}, phase,
-                                   factory, ADMIN_COOKIE, CaseRunner.build_header)
+                                   factory, None, CaseRunner.build_header)
 
     assert selections == [("Host-226", "none")]
     assert client.requests[0]["headers"] == {}
@@ -207,7 +224,7 @@ def test_anonymous_case_remains_supported_on_other_hosts(evidence, host):
         selections.append((host_key, principal))
         return client
 
-    CaseRunner.run(case_for(host, "none"), factory, ADMIN_COOKIE, apply_metadata=False)
+    CaseRunner.run(case_for(host, "none"), factory, None, apply_metadata=False)
 
     assert selections == [(host, "none")]
     assert len(client.requests) == 1
@@ -250,7 +267,7 @@ class RecordingAdapter(BaseAdapter):
         pass
 
 
-def test_factory_keeps_cross_host_admin_sessions_but_runtime_sends_cookie_only_to_host_be(evidence):
+def test_factory_keeps_cross_host_admin_sessions_and_rejects_host_be_credential_on_foreign_request(evidence):
     factory = fixtures.api_client_factory.__wrapped__(FakeConfig())
     admin = factory("Host-be", "admin")
     foreign_admin = factory("Host-226", "admin")
@@ -263,14 +280,21 @@ def test_factory_keeps_cross_host_admin_sessions_but_runtime_sends_cookie_only_t
     admin.session.mount("https://", admin_adapter)
     foreign_admin.session.mount("https://", foreign_adapter)
 
-    CaseRunner.run(case_for(), factory, ADMIN_COOKIE, apply_metadata=False)
+    provider = FakeCredentialProvider(
+        {("Host-be", "admin"): admin, ("Host-226", "admin"): foreign_admin},
+        credentials={
+            ("Host-be", "admin"): Credential("Host-be", "admin", ADMIN_COOKIE),
+            ("Host-226", "admin"): Credential("Host-be", "admin", ADMIN_COOKIE),
+        },
+    )
+    CaseRunner.run(case_for(), factory, provider, apply_metadata=False)
     assert len(admin_adapter.requests) == 1
     prepared = admin_adapter.requests[0]
     assert prepared.url == "https://be.example.invalid/offline-read"
     assert prepared.headers["Cookie"] == ADMIN_COOKIE
 
     with pytest.raises(ValueError) as raised:
-        CaseRunner.run(case_for("Host-226"), factory, ADMIN_COOKIE, apply_metadata=False)
+        CaseRunner.run(case_for("Host-226"), factory, provider, apply_metadata=False)
 
     assert foreign_adapter.requests == []
     assert not foreign_admin.session.cookies

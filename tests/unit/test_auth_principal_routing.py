@@ -12,7 +12,9 @@ from wizbank_api_test.core.case_runner import CaseRunner
 from wizbank_api_test.core.context import Context
 from wizbank_api_test.core.effect_executor import EffectExecutor
 from wizbank_api_test.core.endpoint_registry import EndpointRegistry
+from wizbank_api_test.services.credential_provider import Credential
 from wizbank_api_test.tests import conftest as shared_fixtures
+from wizbank_api_test.tests.unit.credential_helpers import FakeCredentialProvider
 
 
 ADMIN_COOKIE = "SESSION=PRIVATE_ADMIN_COOKIE"
@@ -20,7 +22,6 @@ PRIVATE_AUTH = "Bearer PRIVATE_AUTHORIZATION"
 PRIVATE_PASSWORD = "PRIVATE_PASSWORD"
 PRIVATE_TOKEN = "PRIVATE_TOKEN"
 MISSING = object()
-LEARNER_ERROR = "Learner authentication is unavailable in v2.5B-2A"
 
 
 class FakeResponse:
@@ -33,8 +34,11 @@ class FakeResponse:
 
 
 class FakeClient:
-    def __init__(self):
+    def __init__(self, host_key="Host-be", principal="admin"):
         self.requests = []
+        self.host_key = host_key
+        self.principal = principal
+        self.session = object()
 
     def request(self, **kwargs):
         self.requests.append(deepcopy(kwargs))
@@ -84,7 +88,7 @@ def assert_no_credentials(value):
     pytest.param(MISSING, "none", id="omitted"),
 ])
 def test_case_runner_routes_host_and_principal_without_storing_credentials(host, auth, principal):
-    client = FakeClient()
+    client = FakeClient(host, principal)
     selections = []
 
     def factory(host_key, *, principal):
@@ -93,15 +97,10 @@ def test_case_runner_routes_host_and_principal_without_storing_credentials(host,
 
     case = case_for(auth, host)
     original = deepcopy(case)
-    if principal == "admin" and host != "Host-be":
-        with pytest.raises(ValueError) as raised:
-            CaseRunner.run(case, factory, ADMIN_COOKIE, apply_metadata=False)
-        assert selections == client.requests == []
-        assert_no_credentials(str(raised.value))
-        assert Context.snapshot()["size"] == 0
-        assert case == original
-        return
-    CaseRunner.run(case, factory, ADMIN_COOKIE, apply_metadata=False)
+    provider = FakeCredentialProvider(
+        {(host, principal): client} if principal != "none" else {}, cookie=ADMIN_COOKIE,
+    )
+    CaseRunner.run(case, factory, provider, apply_metadata=False)
 
     assert selections == [(host, principal)]
     assert len(client.requests) == 1
@@ -111,6 +110,7 @@ def test_case_runner_routes_host_and_principal_without_storing_credentials(host,
         assert headers["Cookie"] == ADMIN_COOKIE
     else:
         assert not {str(key).lower() for key in headers} & {"cookie", "authorization"}
+        assert provider.get_calls == provider.match_calls == []
     assert Context.is_case_passed(case["id"])
     assert Context.all()["variables"] == {}
     assert_no_credentials(Context.snapshot())
@@ -128,7 +128,7 @@ def test_anonymous_auth_headers_fail_before_transport_and_before_resolving_secre
     monkeypatch.setattr(allure, "attach", lambda body, **kwargs: evidence.append(str(body)))
 
     with pytest.raises(ValueError) as raised:
-        CaseRunner.run(case, lambda host, principal="none": client, ADMIN_COOKIE, apply_metadata=False)
+        CaseRunner.run(case, lambda host, principal="none": client, None, apply_metadata=False)
 
     assert "anonymous" in str(raised.value).lower()
     assert client.requests == []
@@ -148,7 +148,7 @@ def test_anonymous_auth_headers_fail_before_transport_and_before_resolving_secre
 def test_effect_capture_routes_by_normalized_capture_auth_not_root(monkeypatch, phase, endpoint_auth, root_auth, principal):
     host = "Host-be" if principal == "admin" else "Host-226"
     capture_endpoint(monkeypatch, endpoint_auth, host)
-    client = FakeClient()
+    client = FakeClient(host, principal)
     selections = []
 
     def factory(host_key, *, principal):
@@ -163,7 +163,10 @@ def test_effect_capture_routes_by_normalized_capture_auth_not_root(monkeypatch, 
     }}
     original = deepcopy(root)
     capture = getattr(EffectExecutor, "capture_" + phase)
-    result = capture(root, factory, ADMIN_COOKIE, CaseRunner.build_header)
+    provider = FakeCredentialProvider(
+        {(host, principal): client} if principal != "none" else {}, cookie=ADMIN_COOKIE,
+    )
+    result = capture(root, factory, provider, CaseRunner.build_header)
 
     assert selections == [(host, principal)]
     assert len(client.requests) == 1
@@ -172,6 +175,7 @@ def test_effect_capture_routes_by_normalized_capture_auth_not_root(monkeypatch, 
         assert client.requests[0]["headers"]["Cookie"] == ADMIN_COOKIE
     else:
         assert client.requests[0]["headers"] == {}
+        assert provider.get_calls == provider.match_calls == []
     assert Context.snapshot()["size"] == 0
     assert_no_credentials(Context.all())
     assert root == original
@@ -180,7 +184,7 @@ def test_effect_capture_routes_by_normalized_capture_auth_not_root(monkeypatch, 
 @pytest.mark.parametrize("override,principal", [("none", "none"), (None, "none"), ("admin", "admin")])
 def test_explicit_capture_auth_and_host_override_control_routing(monkeypatch, override, principal):
     capture_endpoint(monkeypatch, "admin", "Host-be")
-    client = FakeClient()
+    client = FakeClient("Host-226", principal)
     selections = []
 
     def factory(host_key, *, principal):
@@ -188,25 +192,20 @@ def test_explicit_capture_auth_and_host_override_control_routing(monkeypatch, ov
         return client
 
     config = {"endpoint": "OFFLINE_CAPTURE", "auth": override, "host": "Host-226"}
-    if principal == "admin":
-        with pytest.raises(ValueError) as raised:
-            EffectExecutor.execute_capture(case_for("admin"), config, "before", factory,
-                                           ADMIN_COOKIE, CaseRunner.build_header)
-        assert selections == client.requests == []
-        assert_no_credentials(str(raised.value))
-        assert Context.snapshot()["size"] == 0
-        return
-    EffectExecutor.execute_capture(case_for("admin"), config, "before", factory, ADMIN_COOKIE, CaseRunner.build_header)
+    provider = FakeCredentialProvider(
+        {("Host-226", principal): client} if principal != "none" else {}, cookie=ADMIN_COOKIE,
+    )
+    EffectExecutor.execute_capture(case_for("admin"), config, "before", factory, provider, CaseRunner.build_header)
 
     assert selections == [("Host-226", principal)]
     assert len(client.requests) == 1
     assert_no_credentials(Context.all())
 
 
-def test_learner_case_fails_closed_before_client_or_transport(monkeypatch):
+def test_unconfigured_learner_case_fails_closed_before_transport(monkeypatch):
     selections = []
     evidence = []
-    client = FakeClient()
+    client = FakeClient(principal="learner")
 
     def factory(host, *, principal):
         selections.append((host, principal))
@@ -215,44 +214,49 @@ def test_learner_case_fails_closed_before_client_or_transport(monkeypatch):
     monkeypatch.setattr(allure, "attach", lambda body, **kwargs: evidence.append(str(body)))
     case = case_for("learner")
     case["headers"] = {"Cookie": ADMIN_COOKIE, "Authorization": PRIVATE_AUTH}
-    with pytest.raises(ValueError, match="^" + LEARNER_ERROR + "$") as raised:
-        CaseRunner.run(case, factory, ADMIN_COOKIE, apply_metadata=False)
+    provider = FakeCredentialProvider({("Host-be", "learner"): client}, credentials={})
+    with pytest.raises(ValueError) as raised:
+        CaseRunner.run(case, factory, provider, apply_metadata=False)
 
-    assert selections == []
+    assert selections == [("Host-be", "learner")]
+    assert provider.get_calls == [("Host-be", "learner")]
     assert client.requests == []
     assert_no_credentials(str(raised.value))
     assert_no_credentials(evidence)
     assert Context.snapshot()["size"] == 0
 
 
-def test_learner_header_builder_fails_with_stable_safe_message():
+def test_learner_header_builder_rejects_admin_credential_with_safe_message():
     case = case_for("learner")
     case["headers"] = {"Cookie": ADMIN_COOKIE, "Authorization": PRIVATE_AUTH}
-    with pytest.raises(ValueError, match="^" + LEARNER_ERROR + "$") as raised:
-        CaseRunner.build_header(case, ADMIN_COOKIE)
+    with pytest.raises(ValueError) as raised:
+        CaseRunner.build_header(case, Credential("Host-be", "admin", ADMIN_COOKIE))
     assert_no_credentials(str(raised.value))
     assert Context.snapshot()["size"] == 0
 
 
 @pytest.mark.parametrize("phase", ["before", "after"])
-def test_learner_capture_fails_closed_even_with_custom_header_builder(monkeypatch, phase):
+def test_unconfigured_learner_capture_fails_closed_even_with_custom_header_builder(monkeypatch, phase):
     capture_endpoint(monkeypatch, "learner")
-    client = FakeClient()
+    client = FakeClient("Host-226", "learner")
     selections, header_calls = [], []
 
     def factory(host, *, principal):
         selections.append((host, principal))
         return client
 
-    def header_builder(case, cookie):
+    def header_builder(case, credential):
         header_calls.append(case)
         return {}
 
-    with pytest.raises(ValueError, match="^" + LEARNER_ERROR + "$"):
+    provider = FakeCredentialProvider({("Host-226", "learner"): client}, credentials={})
+    with pytest.raises(ValueError):
         EffectExecutor.execute_capture(case_for("admin"), {"endpoint": "OFFLINE_CAPTURE"}, phase,
-                                       factory, ADMIN_COOKIE, header_builder)
+                                       factory, provider, header_builder)
 
-    assert selections == header_calls == client.requests == []
+    assert selections == [("Host-226", "learner")]
+    assert provider.get_calls == [("Host-226", "learner")]
+    assert header_calls == client.requests == []
     assert Context.snapshot()["size"] == 0
 
 
@@ -263,7 +267,7 @@ def test_anonymous_capture_rejects_auth_header_before_transport(monkeypatch, hea
     config = {"endpoint": "OFFLINE_CAPTURE", "headers": {header: PRIVATE_AUTH}}
     with pytest.raises(ValueError) as raised:
         EffectExecutor.execute_capture(case_for("admin"), config, "before",
-                                       lambda host, principal="none": client, ADMIN_COOKIE, CaseRunner.build_header)
+                                       lambda host, principal="none": client, None, CaseRunner.build_header)
     assert client.requests == []
     assert_no_credentials(str(raised.value))
     assert Context.snapshot()["size"] == 0
@@ -275,13 +279,13 @@ def test_anonymous_capture_rejects_auth_from_custom_header_builder(monkeypatch, 
     client = FakeClient()
     header_calls = []
 
-    def header_builder(case, cookie):
+    def header_builder(case, credential):
         header_calls.append(case)
         return {header: PRIVATE_AUTH}
 
     with pytest.raises(ValueError) as raised:
         EffectExecutor.execute_capture(case_for("admin"), {"endpoint": "OFFLINE_CAPTURE"}, "before",
-                                       lambda host, principal="none": client, ADMIN_COOKIE, header_builder)
+                                       lambda host, principal="none": client, None, header_builder)
 
     assert len(header_calls) == 1
     assert client.requests == []
@@ -297,7 +301,7 @@ def test_anonymous_legacy_one_argument_factory_remains_compatible():
         selections.append(host)
         return client
 
-    CaseRunner.run(case_for("none"), factory, ADMIN_COOKIE, apply_metadata=False)
+    CaseRunner.run(case_for("none"), factory, None, apply_metadata=False)
     assert selections == ["Host-be"]
     assert len(client.requests) == 1
     assert "Cookie" not in client.requests[0]["headers"]
@@ -381,7 +385,7 @@ def test_variadic_factory_is_not_treated_as_a_legacy_host_only_factory():
 def test_invalid_principal_is_rejected_without_echoing_credentials(invalid):
     client = FakeClient()
     with pytest.raises(ValueError) as raised:
-        CaseRunner.run(case_for(invalid), lambda host, principal="none": client, ADMIN_COOKIE, apply_metadata=False)
+        CaseRunner.run(case_for(invalid), lambda host, principal="none": client, None, apply_metadata=False)
     assert client.requests == []
     assert_no_credentials(str(raised.value))
     assert Context.snapshot()["size"] == 0
@@ -407,10 +411,11 @@ def test_actual_factory_and_case_runner_keep_admin_ownership_and_anonymous_reque
         return client
 
     monkeypatch.setattr(requests.Session, "request", request)
+    provider = FakeCredentialProvider({("Host-be", "admin"): base_factory("Host-be", "admin")}, cookie=ADMIN_COOKIE)
     for index, auth in enumerate(("admin", "none", "admin", None)):
         case = case_for(auth)
         case["id"] = "REAL_FACTORY_" + str(index)
-        CaseRunner.run(case, factory, ADMIN_COOKIE, apply_metadata=False)
+        CaseRunner.run(case, factory, provider, apply_metadata=False)
 
     assert [(host, principal) for host, principal, _ in selections] == [
         ("Host-be", "admin"), ("Host-be", "none"), ("Host-be", "admin"), ("Host-be", "none"),
@@ -430,7 +435,7 @@ def test_admin_request_evidence_redacts_credentials_without_writing_context(monk
     evidence = []
     transports = []
     monkeypatch.setattr(allure, "attach", lambda body, **kwargs: evidence.append(str(body)))
-    client = client_module.ApiClient("https://example.invalid", principal="admin")
+    client = client_module.ApiClient("https://example.invalid", principal="admin", host_key="Host-be")
 
     def request(**kwargs):
         transports.append(deepcopy(kwargs))
@@ -440,7 +445,8 @@ def test_admin_request_evidence_redacts_credentials_without_writing_context(monk
     case = case_for("admin")
     case["headers"]["Authorization"] = PRIVATE_AUTH
     case["json"] = {"password": PRIVATE_PASSWORD, "token": PRIVATE_TOKEN}
-    CaseRunner.run(case, lambda host, principal="none": client, ADMIN_COOKIE, apply_metadata=False)
+    provider = FakeCredentialProvider({("Host-be", "admin"): client}, cookie=ADMIN_COOKIE)
+    CaseRunner.run(case, lambda host, principal="none": client, provider, apply_metadata=False)
 
     assert transports[0]["headers"]["Cookie"] == ADMIN_COOKIE
     assert transports[0]["headers"]["Authorization"] == PRIVATE_AUTH

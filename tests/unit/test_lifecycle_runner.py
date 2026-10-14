@@ -65,7 +65,10 @@ def test_lifecycle_success_runs_four_phases_and_marks_restored(monkeypatch):
     cases = _case_map()
     calls = []
 
-    def fake_run(case, api_client_factory, admin_cookie, **kwargs):
+    provider = object()
+
+    def fake_run(case, api_client_factory, credential_provider, **kwargs):
+        assert credential_provider is provider
         case_id = case["id"]
         calls.append(case_id)
 
@@ -88,7 +91,7 @@ def test_lifecycle_success_runs_four_phases_and_marks_restored(monkeypatch):
         root_case=cases["WRITE_001"],
         case_map=cases,
         api_client_factory=lambda host: object(),
-        admin_cookie="SESSION=secret",
+        credential_provider=provider,
         request=_Request(),
     )
 
@@ -106,7 +109,10 @@ def test_verify_failure_still_runs_cleanup_in_finally(monkeypatch):
     cases = _case_map()
     calls = []
 
-    def fake_run(case, api_client_factory, admin_cookie, **kwargs):
+    provider = object()
+
+    def fake_run(case, api_client_factory, credential_provider, **kwargs):
+        assert credential_provider is provider
         case_id = case["id"]
         calls.append(case_id)
 
@@ -135,7 +141,7 @@ def test_verify_failure_still_runs_cleanup_in_finally(monkeypatch):
             root_case=cases["WRITE_001"],
             case_map=cases,
             api_client_factory=lambda host: object(),
-            admin_cookie="SESSION=secret",
+            credential_provider=provider,
             request=_Request(),
         )
 

@@ -53,7 +53,7 @@ class TestApiCases:
         CASE_IDS,
         ids=CASE_IDS
     )
-    def test_api_case(self,api_client_factory,admin_cookie,request,case_id):
+    def test_api_case(self,api_client_factory,credential_provider,request,case_id):
         """统一 YAML Case 入口。
 
         普通 Case：LifecycleRunner.run_case -> CaseRunner.run
@@ -78,7 +78,7 @@ class TestApiCases:
         # CaseRunner.run(
         #     case = case,
         #     api_client_factory = api_client_factory,
-        #     admin_cookie = admin_cookie,
+        #     credential_provider = credential_provider,
         #     request = request
         # )
         managed_by = LIFECYCLE_CHILD_MAP.get(case_id)
@@ -91,7 +91,7 @@ class TestApiCases:
                 root_case=case,
                 case_map=CASE_MAP,
                 api_client_factory=api_client_factory,
-                admin_cookie=admin_cookie,
+                credential_provider=credential_provider,
                 request=request,
             )
             return
@@ -99,6 +99,6 @@ class TestApiCases:
         LifecycleRunner.run_case(
             case=case,
             api_client_factory=api_client_factory,
-            admin_cookie=admin_cookie,
+            credential_provider=credential_provider,
             request=request,
         )

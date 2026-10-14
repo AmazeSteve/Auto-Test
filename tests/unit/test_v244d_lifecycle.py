@@ -8,6 +8,7 @@ from wizbank_api_test.core.case_loader import CaseLoader
 from wizbank_api_test.core.lifecycle_runner import LifecycleRunner
 from wizbank_api_test.core.context import Context
 from wizbank_api_test.core.endpoint_registry import EndpointRegistry
+from wizbank_api_test.tests.unit.credential_helpers import FakeCredentialProvider
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -29,6 +30,9 @@ class StatefulUserClient:
     def __init__(self, state):
         self.state = state
         self.calls = []
+        self.host_key = "Host-be"
+        self.principal = "admin"
+        self.session = object()
         # The migrated YAML now projects the complete frozen B1 Read Model.
         self.read_model = json.loads(
             (PROJECT_ROOT / "tests/fixtures/user_update_read_model.json").read_text()
@@ -121,7 +125,7 @@ def test_dynamic_mutation_and_explicit_restore_mapping(destructive_cases):
         root_case=destructive_cases["WB_USER_DESTRUCTIVE_DEMO_001"],
         case_map=destructive_cases,
         api_client_factory=factory,
-        admin_cookie=cookie,
+        credential_provider=FakeCredentialProvider({("Host-be", "admin"): client}, cookie=cookie),
         request=request,
     )
 

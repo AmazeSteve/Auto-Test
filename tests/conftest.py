@@ -3,6 +3,7 @@ from wizbank_api_test.core.config import  Config
 from wizbank_api_test.core.client import ApiClient, normalize_principal
 from wizbank_api_test.core.context import Context
 from wizbank_api_test.services.auth_service import AuthService
+from wizbank_api_test.services.credential_provider import CredentialProvider
 from wizbank_api_test.services.user_group_service import UserGroupService
 
 """
@@ -62,6 +63,7 @@ def api_client_factory(config):
                 timeout=config.get_timeout(),
                 verify_ssl=config.get_verify_ssl(),
                 principal=principal,
+                host_key=host_key,
             )
             if principal == "none":
                 return client
@@ -78,10 +80,15 @@ def api_client(api_client_factory):
 # 登录对象初始化
 @pytest.fixture(scope='session')
 def auth_service(api_client_factory,config):
-    return AuthService(api_client_factory("Host-be", "admin"), config)
+    return AuthService(api_client_factory("Host-be", "admin"), config, host_key="Host-be", principal="admin")
 
 @pytest.fixture(scope='session')
-def admin_cookie(auth_service):
+def credential_provider(api_client_factory, config):
+    """Session-scoped ownership/cache; construction performs no login."""
+    return CredentialProvider(api_client_factory, config)
+
+@pytest.fixture(scope='session')
+def admin_cookie(credential_provider):
 #     cookie = auth_service.admin_login()
 # #     保存在上下文内容
 #     Context.set('admin_cookie', cookie)
@@ -90,7 +97,7 @@ def admin_cookie(auth_service):
 #     return cookie
     # Cookie 只由 fixture 持有并显式传给请求层。
     # v2.4.5A 起不再写入 Context，避免运行时状态与报告中残留会话凭证。
-    return auth_service.admin_login()
+    return credential_provider.get("Host-be", "admin").cookie
 
 
 @pytest.fixture(scope='session')

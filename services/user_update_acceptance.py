@@ -110,13 +110,13 @@ def readonly_dependencies(root, case_map):
     return ordered
 
 
-def prepare_dependencies(root, case_map, api_client_factory, admin_cookie, request, username):
+def prepare_dependencies(root, case_map, api_client_factory, credential_provider, request, username):
     if require_username() != username:
         raise C1SafetyError("C1 target environment changed")
     dependencies = readonly_dependencies(root, case_map)
     Context.clear()
     for case in dependencies:
-        LifecycleRunner.run_case(case, api_client_factory, admin_cookie, request)
+        LifecycleRunner.run_case(case, api_client_factory, credential_provider, request)
 
 
 def _read_model(payload, username):
@@ -145,12 +145,12 @@ def validate_plan(root, before, result, username):
     }
 
 
-def preflight(root, case_map, api_client_factory, admin_cookie, request):
+def preflight(root, case_map, api_client_factory, credential_provider, request):
     username = require_username()
     try:
-        prepare_dependencies(root, case_map, api_client_factory, admin_cookie, request, username)
+        prepare_dependencies(root, case_map, api_client_factory, credential_provider, request, username)
         before = EffectExecutor.capture_before(case=root, api_client_factory=api_client_factory,
-                                              admin_cookie=admin_cookie, header_builder=CaseRunner.build_header)
+                                              credential_provider=credential_provider, header_builder=CaseRunner.build_header)
         _read_model(before, username)
         result = RequestPayloadResolver.resolve(root, before)
         summary = validate_plan(root, before, result, username)
@@ -162,14 +162,14 @@ def preflight(root, case_map, api_client_factory, admin_cookie, request):
         raise C1AcceptanceError("C1 preflight failed before mutation; see safe summary") from None
 
 
-def accept_lifecycle(root, case_map, api_client_factory, admin_cookie, request, monkeypatch, journal=None):
+def accept_lifecycle(root, case_map, api_client_factory, credential_provider, request, monkeypatch, journal=None):
     username = require_real_gates(request)
     journal = journal if journal is not None else RecoveryJournal()
     observations = {}
     summary = {"case_id": root["id"], "target_user_hash": sha256(username), "READY": "NO"}
     try:
         journal.assert_no_pending()
-        prepare_dependencies(root, case_map, api_client_factory, admin_cookie, request, username)
+        prepare_dependencies(root, case_map, api_client_factory, credential_provider, request, username)
         capture_before, capture_after = EffectExecutor.capture_before, EffectExecutor.capture_after
         resolve = RequestPayloadResolver.resolve
 
@@ -197,14 +197,14 @@ def accept_lifecycle(root, case_map, api_client_factory, admin_cookie, request, 
             scoped.setattr(EffectExecutor, "capture_before", before_observer)
             scoped.setattr(RequestPayloadResolver, "resolve", resolver_observer)
             scoped.setattr(EffectExecutor, "capture_after", after_observer)
-            LifecycleRunner.run_lifecycle(root, case_map, api_client_factory, admin_cookie, request)
+            LifecycleRunner.run_lifecycle(root, case_map, api_client_factory, credential_provider, request)
 
         effect = Context.get_effect(root["id"]) or {}
         if (effect.get("state") != Context.EFFECT_RESTORED
                 or effect.get("restore_payload") != observations.get("restore_payload")):
             raise C1SafetyError("C1 lifecycle did not preserve restored Effect/recovery material")
         restored = capture_before(case=root, api_client_factory=api_client_factory,
-                                  admin_cookie=admin_cookie, header_builder=CaseRunner.build_header)
+                                  credential_provider=credential_provider, header_builder=CaseRunner.build_header)
         cur_lan = root["request_builder"]["arguments"]["cur_lan"]
         before_state = state.project(_read_model(observations["before"], username), cur_lan)
         mutation_state = state.project(_read_model(observations["mutation"], username), cur_lan)

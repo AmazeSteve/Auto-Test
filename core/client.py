@@ -3,6 +3,7 @@
 统一封装请求
 
 """
+import inspect
 import json
 from copy import deepcopy
 
@@ -11,6 +12,76 @@ import requests
 import allure
 from wizbank_api_test.core.variable_resolver import VariableResolver
 from wizbank_api_test.utils.redaction import SensitiveDataRedactor
+
+
+def normalize_principal(principal):
+    if principal is None:
+        return "none"
+    if not isinstance(principal, str) or principal not in ("admin", "learner", "none"):
+        raise ValueError("Unsupported authentication principal")
+    return principal
+
+
+def runtime_principal(auth):
+    principal = normalize_principal(auth)
+    if principal == "learner":
+        raise ValueError("Learner authentication is unavailable in v2.5B-2A")
+    return principal
+
+
+def validate_admin_credential_host(host_key, principal):
+    if principal == "admin" and host_key != "Host-be":
+        raise ValueError("Compatibility admin credentials are only supported for Host-be")
+
+
+def reject_anonymous_auth_headers(headers):
+    if any(str(name).casefold() in ("cookie", "authorization") for name in (headers or {})):
+        raise ValueError("Anonymous requests cannot contain Cookie or Authorization headers")
+
+
+def get_principal_client(api_client_factory, host_key, principal):
+    """Route explicitly; retain only legacy one-argument anonymous factories."""
+    principal = normalize_principal(principal)
+    if principal == "none":
+        try:
+            signature = inspect.signature(api_client_factory)
+        except (TypeError, ValueError):
+            pass
+        else:
+            try:
+                signature.bind(host_key, principal=principal)
+            except TypeError:
+                if len(signature.parameters) != 1:
+                    raise
+                parameter = next(iter(signature.parameters.values()))
+                if parameter.kind not in (
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                ):
+                    raise
+                signature.bind(host_key)
+                return api_client_factory(host_key)
+    return api_client_factory(host_key, principal=principal)
+
+
+class _PrincipalAuth(requests.auth.AuthBase):
+    """Explicit auth ownership without deriving credentials from ambient NETRC."""
+
+    def __call__(self, request):
+        return request
+
+
+class _PrincipalSession(requests.Session):
+    def __init__(self):
+        super().__init__()
+        self.auth = _PrincipalAuth()
+
+    def rebuild_auth(self, prepared_request, response):
+        # Preserve Requests' cross-origin stripping without its redirect NETRC lookup.
+        if "Authorization" in prepared_request.headers and self.should_strip_auth(
+            response.request.url, prepared_request.url
+        ):
+            del prepared_request.headers["Authorization"]
 
 """
 数据流向：
@@ -32,9 +103,13 @@ class ApiClient:
             "access_token",
             "refresh_token",
         }
-    def __init__(self,base_url:str,default_headers=None,timeout=30,verify_ssl=False):
+    def __init__(self,base_url:str,default_headers=None,timeout=30,verify_ssl=False,*,principal=None):
+        # Existing direct construction remains compatible; factory clients are explicit.
+        self.principal = normalize_principal(principal) if principal is not None else None
+        if self.principal == "none":
+            reject_anonymous_auth_headers(default_headers)
         self.base_url = base_url.rstrip('/')
-        self.session = requests.Session()
+        self.session = _PrincipalSession() if self.principal is not None else requests.Session()
         self.default_headers = default_headers or {}
         self.timeout = timeout
         self.verify_ssl = verify_ssl
@@ -52,6 +127,9 @@ class ApiClient:
         literal_json=False,
     ):
         url = self.base_url +"/" +path.lstrip("/")
+        if self.principal == "none":
+            reject_anonymous_auth_headers(self.default_headers)
+            reject_anonymous_auth_headers(headers)
 
         # 给到变量解释器迭代获取数据
         resolved_params = VariableResolver.resolve(params or {})

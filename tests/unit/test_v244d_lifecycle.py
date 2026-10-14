@@ -109,8 +109,9 @@ def test_dynamic_mutation_and_explicit_restore_mapping(destructive_cases):
     }
     client = StatefulUserClient(state)
 
-    def factory(host_key):
+    def factory(host_key, principal="none"):
         assert host_key == "Host-be"
+        assert principal == "admin"
         return client
 
     request = _Request()

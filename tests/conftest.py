@@ -1,6 +1,6 @@
 import pytest
 from wizbank_api_test.core.config import  Config
-from wizbank_api_test.core.client import  ApiClient
+from wizbank_api_test.core.client import ApiClient, normalize_principal
 from wizbank_api_test.core.context import Context
 from wizbank_api_test.services.auth_service import AuthService
 from wizbank_api_test.services.user_group_service import UserGroupService
@@ -49,67 +49,36 @@ def config(request):
 #支持多个HOST 环境
 @pytest.fixture(scope='session')
 def api_client_factory(config):
-    """
-    api_client_factory("Host-be")  → WizBank 管理端
-    api_client_factory("Host-156") → LyndonAI
-    api_client_factory("Host-226") → 指定旧环境
+    """按 Host 和身份隔离 Session；匿名调用每次返回新客户端。"""
+    clients = {}
 
-    多 Host 客户端工厂（会话级）
-
-    用途：
-        根据不同的 host_key 创建/复用对应的 ApiClient 实例。
-        避免为每个用例重复创建客户端，同时支持同一测试中访问不同后端服务。
-
-    使用方式：
-        在测试用例中调用 api_client_factory("Host-be") 获取 WizBank 管理端客户端，
-        或 api_client_factory("Host-156") 获取 LyndonAI 客户端等。
-
-    参数：
-        config: 环境配置对象，提供不同 Host 的 base_url
-
-    返回：
-        _get_client 函数，该函数接收 host_key 并返回对应的 ApiClient 实例
-    """
-    clients = {} # 缓存已创建的客户端，key 为 host_key
-
-    def _get_client(host_key:str = "Host-be"):
-        """内部工厂函数，按需创建并缓存客户端"""
-        if host_key not in clients:
-            base_url = config.get_base_url(host_key)
-
-            clients[host_key] = ApiClient(
-                base_url=base_url,
+    def _get_client(host_key: str = "Host-be", principal="none"):
+        principal = normalize_principal(principal)
+        key = (host_key, principal)
+        if principal == "none" or key not in clients:
+            client = ApiClient(
+                base_url=config.get_base_url(host_key),
                 default_headers=config.get_default_headers(),
                 timeout=config.get_timeout(),
                 verify_ssl=config.get_verify_ssl(),
+                principal=principal,
             )
-        return clients[host_key]
+            if principal == "none":
+                return client
+            clients[key] = client
+        return clients[key]
     return _get_client
 """
 共用发起API夹具
 """
-@pytest.fixture(scope='session')
+@pytest.fixture(scope='function')
 def api_client(api_client_factory):
-        # base_url = config.get_base_url("Host-be")
-        #
-        # return ApiClient(
-        #     base_url=base_url,
-        #     default_headers=config.get_default_headers(),
-        #     timeout=config.get_timeout(),
-        #     verify_ssl=config.get_verify_ssl(),
-        # )
-#         调整支持多HOST
-        """
-        默认 API 客户端（向后兼容）
-
-        保持原有 fixture 名称，便于旧测试用例直接使用。
-        内部调用 api_client_factory("Host-be") 返回默认 Host 的客户端。
-        """
-        return api_client_factory("Host-be")
+    """保留默认匿名客户端 fixture，Session 不跨测试项复用。"""
+    return api_client_factory("Host-be", "none")
 # 登录对象初始化
 @pytest.fixture(scope='session')
-def auth_service(api_client,config):
-    return AuthService(api_client, config)
+def auth_service(api_client_factory,config):
+    return AuthService(api_client_factory("Host-be", "admin"), config)
 
 @pytest.fixture(scope='session')
 def admin_cookie(auth_service):
@@ -125,12 +94,12 @@ def admin_cookie(auth_service):
 
 
 @pytest.fixture(scope='session')
-def user_group_service(api_client,admin_cookie):
+def user_group_service(admin_cookie,api_client_factory):
     """
 
-    :param api_client:  共用API Client
+    :param api_client_factory:  按 Host 和身份隔离的客户端工厂
     :param admin_cookie:  全局会话admin_cookie 夹具
     :return:
     """
-    return UserGroupService(api_client, admin_cookie)
+    return UserGroupService(api_client_factory("Host-be", "admin"), admin_cookie)
 

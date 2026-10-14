@@ -118,7 +118,7 @@ def setup_harness(tmp_path, monkeypatch):
         transport = FakeTransport(cases, journal, **kwargs)
         client = ApiClient("https://example.invalid", verify_ssl=True)
         monkeypatch.setattr(client.session, "request", transport.request)
-        return root, cases, journal, transport, lambda host: client
+        return root, cases, journal, transport, lambda host, principal="none": client
 
     return make
 

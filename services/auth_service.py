@@ -1,5 +1,6 @@
 import allure
 
+from wizbank_api_test.core.client import runtime_principal
 from wizbank_api_test.utils.encode_util  import EncodeUtil
 
 """
@@ -39,6 +40,7 @@ class AuthService(object):
 
     @allure.step("学员登录并获得 Cookie")
     def learner_login(self)->str:
+        runtime_principal("learner")
         user = self.config.get_user("learner")
 
         payload = {

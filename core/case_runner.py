@@ -23,6 +23,10 @@ import  allure
 
 
 from wizbank_api_test.core.assertions import Assertor
+from wizbank_api_test.core.client import (
+    get_principal_client, reject_anonymous_auth_headers, runtime_principal,
+    validate_admin_credential_host,
+)
 from wizbank_api_test.core.context import Context
 from wizbank_api_test.core.effect_collector import EffectCollector
 from wizbank_api_test.core.effect_executor import EffectExecutor
@@ -90,8 +94,11 @@ class CaseRunner:
     def build_header(cls,case:dict,admin_cookie:str)->dict:
     # ---------- 4. 认证与请求头 ----------
 
-        auth = case.get("auth")
+        auth = runtime_principal(case.get("auth"))
+        validate_admin_credential_host(case.get("host", "Host-be"), auth)
         headers = (case.get("headers", {}) or {}).copy()
+        if auth == "none":
+            reject_anonymous_auth_headers(headers)
 
         # 若 auth 为 "admin"，则将 admin_cookie 注入 Cookie 头
         # 注意：admin_cookie 应是字符串（如 "SESSION=xxx"），此处直接赋值
@@ -225,7 +232,9 @@ class CaseRunner:
         """执行一条 Case，不处理跨 Case 依赖与 rollback 编排。"""
         # 获取当前case指定的Host YAML没写就默认走Host-be 写了就走指定的Host
         host_key = case.get("host", "Host-be")
-        api_client = api_client_factory(host_key)
+        principal = runtime_principal(case.get("auth"))
+        validate_admin_credential_host(host_key, principal)
+        api_client = get_principal_client(api_client_factory, host_key, principal)
 
         if apply_metadata:
             cls.apply_allure_metadata(

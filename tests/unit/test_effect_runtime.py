@@ -105,7 +105,8 @@ def test_effect_capture_reuses_registry_auth_and_variables(
     )
     requested_hosts = []
 
-    def factory(host_key):
+    def factory(host_key, principal="none"):
+        assert principal == "admin"
         requested_hosts.append(host_key)
         return client
 
@@ -154,7 +155,7 @@ def test_effect_capture_rejects_business_failure(loaded_cases):
     with pytest.raises(AssertionError, match="decrypt fail"):
         EffectExecutor.capture_before(
             case=case,
-            api_client_factory=lambda host_key: client,
+            api_client_factory=lambda host_key, principal="none": client,
             admin_cookie="SESSION=abc",
             header_builder=CaseRunner.build_header,
         )

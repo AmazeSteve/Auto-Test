@@ -13,6 +13,10 @@ import copy
 import allure
 
 from wizbank_api_test.core.case_normalizer import CaseNormalizer
+from wizbank_api_test.core.client import (
+    get_principal_client, reject_anonymous_auth_headers, runtime_principal,
+    validate_admin_credential_host,
+)
 from wizbank_api_test.core.endpoint_registry import EndpointRegistry
 from wizbank_api_test.core.response_parser import ResponseParser
 from wizbank_api_test.core.variable_resolver import VariableResolver
@@ -109,12 +113,16 @@ class EffectExecutor:
             "host",
             case.get("host", "Host-be"),
         )
-        api_client = api_client_factory(host_key)
+        principal = runtime_principal(capture_case.get("auth"))
+        validate_admin_credential_host(host_key, principal)
+        api_client = get_principal_client(api_client_factory, host_key, principal)
 
         method = str(capture_case["method"]).upper()
         path = VariableResolver.resolve(capture_case["path"])
         params = VariableResolver.resolve(capture_case.get("params", {}))
         headers = header_builder(capture_case, admin_cookie)
+        if principal == "none":
+            reject_anonymous_auth_headers(headers)
         json_body = VariableResolver.resolve(capture_case.get("json"))
         data = VariableResolver.resolve(capture_case.get("data"))
         files = VariableResolver.resolve(capture_case.get("files"))

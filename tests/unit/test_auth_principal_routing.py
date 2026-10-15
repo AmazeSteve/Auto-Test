@@ -46,13 +46,17 @@ class FakeClient:
 
 
 @pytest.fixture(autouse=True)
-def offline(monkeypatch, bind_context):
+def offline(monkeypatch, bind_context, tmp_path):
     Context.clear()
 
     def reject_network(*args, **kwargs):
         raise AssertionError("auth routing tests must not contact a real host")
 
     monkeypatch.setattr(requests.Session, "request", reject_network)
+    endpoint_dir = tmp_path / "endpoints"
+    endpoint_dir.mkdir()
+    monkeypatch.setattr(EndpointRegistry, "_instance", None)
+    EndpointRegistry(endpoint_dir)
     yield
     Context.clear()
 

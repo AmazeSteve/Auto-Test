@@ -85,13 +85,17 @@ class RecordingProvider(CredentialProvider):
 
 
 @pytest.fixture(autouse=True)
-def offline(monkeypatch, bind_context):
+def offline(monkeypatch, bind_context, tmp_path):
     Context.clear()
 
     def deny(*args, **kwargs):
         raise AssertionError("Real HTTP is forbidden in credential Runtime tests")
 
     monkeypatch.setattr(HTTPAdapter, "send", deny)
+    endpoint_dir = tmp_path / "endpoints"
+    endpoint_dir.mkdir()
+    monkeypatch.setattr(EndpointRegistry, "_instance", None)
+    EndpointRegistry(endpoint_dir)
     yield
     Context.clear()
 

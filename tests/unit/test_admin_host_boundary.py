@@ -42,13 +42,17 @@ class FakeClient:
 
 
 @pytest.fixture(autouse=True)
-def offline(monkeypatch, bind_context):
+def offline(monkeypatch, bind_context, tmp_path):
     Context.clear()
 
     def reject_network(*args, **kwargs):
         raise AssertionError("Real HTTP is forbidden in admin host-boundary tests")
 
     monkeypatch.setattr(HTTPAdapter, "send", reject_network)
+    endpoint_dir = tmp_path / "endpoints"
+    endpoint_dir.mkdir()
+    monkeypatch.setattr(EndpointRegistry, "_instance", None)
+    EndpointRegistry(endpoint_dir)
     yield
     Context.clear()
 

@@ -5,7 +5,7 @@ from wizbank_api_test.core.effect_restore import EffectRestoreResolver
 
 
 @pytest.fixture(autouse=True)
-def reset_context():
+def reset_context(bind_context):
     Context.clear()
     yield
     Context.clear()

@@ -76,7 +76,7 @@ class _Request:
 
 
 @pytest.fixture()
-def destructive_cases(monkeypatch):
+def destructive_cases(monkeypatch, bind_context):
     old_instance = EndpointRegistry._instance
     EndpointRegistry._instance = None
     Context.clear()

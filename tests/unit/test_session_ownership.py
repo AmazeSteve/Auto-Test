@@ -69,7 +69,7 @@ class CookieAdapter(BaseAdapter):
 
 
 @pytest.fixture(autouse=True)
-def no_real_transport(monkeypatch):
+def no_real_transport(monkeypatch, bind_context):
     Context.clear()
 
     def deny(*args, **kwargs):
@@ -122,7 +122,7 @@ def test_admin_login_fixture_owns_admin_session_and_cannot_pollute_anonymous():
     admin = get_client("Host-be", "admin")
     assert service.api_client is admin
     adapter = attach(admin, "SESSION=OFFLINE_ADMIN; Path=/; HttpOnly")
-    original_context = deepcopy(Context._data)
+    original_context = Context.all()
 
     provider = fixtures.credential_provider.__wrapped__(get_client, config)
     assert adapter.requests == []
@@ -131,7 +131,7 @@ def test_admin_login_fixture_owns_admin_session_and_cannot_pollute_anonymous():
     assert cookie == "SESSION=OFFLINE_ADMIN; Path=/; HttpOnly"
     assert admin.session.cookies.get("SESSION") == "OFFLINE_ADMIN"
     assert adapter.requests[0].url == "https://be.example.invalid/app/user/login/v3?developer=PC"
-    assert Context._data == original_context
+    assert Context.all() == original_context
 
     anonymous = get_client("Host-be", "none")
     anonymous_adapter = attach(anonymous)
@@ -180,7 +180,7 @@ def test_user_group_fixture_preserves_admin_client_and_explicit_cookie_behavior(
     assert service.api_client is get_client("Host-be", "admin")
     assert service.admin_cookie == cookie
     assert service._headers() == {"Cookie": cookie}
-    assert not Context._data["variables"]
+    assert not Context.all()["variables"]
 
 
 def test_compatibility_api_client_fixture_is_function_scoped_and_anonymous():

@@ -2,9 +2,80 @@ import pytest
 from wizbank_api_test.core.config import  Config
 from wizbank_api_test.core.client import ApiClient, normalize_principal
 from wizbank_api_test.core.context import Context
+from wizbank_api_test.core.runtime_context import RuntimeContext, bind_runtime_context
 from wizbank_api_test.services.auth_service import AuthService
 from wizbank_api_test.services.credential_provider import CredentialProvider
 from wizbank_api_test.services.user_group_service import UserGroupService
+
+
+@pytest.fixture(scope="function")
+def runtime_context():
+    """Ordinary items own fresh state; workflow modules override this fixture."""
+    return RuntimeContext()
+
+
+@pytest.fixture(autouse=True)
+def bind_context(runtime_context):
+    with bind_runtime_context(runtime_context):
+        yield runtime_context
+
+
+def assert_serial_functional_tests(config, items):
+    """Offline unit workers are allowed; functional API items remain serial."""
+    worker = getattr(config, "workerinput", {}) or {}
+    counts = (
+        getattr(getattr(config, "option", None), "numprocesses", None),
+        worker.get("workercount"),
+    )
+    parallel = any(
+        value in ("auto", "logical") or isinstance(value, int) and value > 1
+        for value in counts
+    )
+    arguments = worker.get("mainargv", ()) or getattr(
+        getattr(config, "invocation_params", None), "args", ()
+    )
+    for index, argument in enumerate(arguments):
+        if argument in ("-nauto", "-nlogical", "-n=auto", "-n=logical",
+                        "--numprocesses=auto", "--numprocesses=logical"):
+            parallel = True
+        if (argument in ("-n", "--numprocesses") and index + 1 < len(arguments)
+                and arguments[index + 1] in ("auto", "logical")):
+            parallel = True
+    if not parallel:
+        return
+    for item in items:
+        path = str(getattr(item, "path", getattr(item, "fspath", ""))).replace("\\", "/")
+        parts = path.split("/")
+        if (len(parts) >= 2 and parts[-2] == "tests"
+                and parts[-1].startswith("test_") and parts[-1].endswith(".py")):
+            raise pytest.UsageError(
+                "Functional API tests require serial execution: dependency workflow state "
+                "and shared backend/Recovery Journal resources cannot use multiple xdist workers. "
+                "Parallel execution is supported only for offline tests/unit."
+            )
+
+
+@pytest.hookimpl(wrapper=True, tryfirst=True)
+def pytest_collection_modifyitems(config, items):
+    # Run after all selection/deselection hooks, including on xdist workers.
+    result = yield
+    try:
+        assert_serial_functional_tests(config, items)
+    except pytest.UsageError as error:
+        if hasattr(config, "workerinput"):
+            # xdist publishes collection IDs even after a collection hook fails.
+            # Do not schedule rejected items; report the policy on the controller.
+            items.clear()
+            config.workeroutput["functional_serial_policy_error"] = str(error)
+        raise
+    return result
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node, error):
+    message = getattr(node, "workeroutput", {}).get("functional_serial_policy_error")
+    if message:
+        raise pytest.UsageError(message)
 
 """
 钩子 - 自定义命令

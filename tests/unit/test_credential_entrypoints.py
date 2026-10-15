@@ -45,7 +45,7 @@ class ObservedProvider(CredentialProvider):
 
 
 @pytest.fixture
-def offline_auth(monkeypatch):
+def offline_auth(monkeypatch, bind_context):
     Context.clear()
 
     def reject_network(*args, **kwargs):

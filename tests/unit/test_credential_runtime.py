@@ -85,7 +85,7 @@ class RecordingProvider(CredentialProvider):
 
 
 @pytest.fixture(autouse=True)
-def offline(monkeypatch):
+def offline(monkeypatch, bind_context):
     Context.clear()
 
     def deny(*args, **kwargs):

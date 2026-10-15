@@ -55,7 +55,7 @@ def _case_map():
 
 
 @pytest.fixture(autouse=True)
-def reset_context():
+def reset_context(bind_context):
     Context.clear()
     yield
     Context.clear()

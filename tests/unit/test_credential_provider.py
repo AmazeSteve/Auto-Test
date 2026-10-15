@@ -115,7 +115,7 @@ def assert_restored(client, state):
 
 
 @pytest.fixture(autouse=True)
-def offline(monkeypatch):
+def offline(monkeypatch, bind_context):
     Context.clear()
     evidence = []
     monkeypatch.setattr(allure, "attach", lambda body, **kwargs: evidence.append(str(body)))

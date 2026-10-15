@@ -13,7 +13,7 @@ from wizbank_api_test.utils.test_data_factory import TestDataFactory as _TestDat
 
 
 @pytest.fixture(autouse=True)
-def reset_context():
+def reset_context(bind_context):
     Context.clear()
     yield
     Context.clear()
@@ -85,7 +85,10 @@ def test_restore_uses_normalized_material_not_snapshot_and_copies_case():
 ])
 def test_restore_requires_existing_effect_and_valid_envelope(effect):
     if effect is not None:
-        Context._data["effects"]["WRITE"] = effect
+        Context.mark_effect("WRITE")
+        record = Context.get_effect("WRITE")
+        record.clear()
+        record.update(effect)
     with pytest.raises(ValueError):
         EffectRestoreResolver.apply({"restore_payload": {"source_effect": "WRITE"}})
 

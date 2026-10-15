@@ -27,6 +27,8 @@ v2.4.5A 完成 Context V2：
 
 import  copy
 
+from wizbank_api_test.core.runtime_context import get_runtime_context
+
 _UNSET = object()
 
 class Context:
@@ -34,9 +36,7 @@ class Context:
     pm.collectionVariables.set()
     pm.collectionVariables.get()
     """
-    # 内置字典
-    # _data = {}
-    """运行时变量、Case 状态与 Effect 状态的共享上下文。"""
+    """当前执行作用域的运行时变量、Case 状态与 Effect 状态兼容接口。"""
 
     EFFECT_UNKNOWN = "unknown"
     EFFECT_NOT_APPLIED = "not_applied"
@@ -45,43 +45,40 @@ class Context:
     EFFECT_RESTORE_FAILED = "restore_failed"
 
     _NAMESPACES = ("variables", "cases", "effects")
-    _data = {
-        "variables": {},# 存放 {{xxx}} 变量
-        "cases": {},# 存放用例执行状态（case_passed）
-        "effects": {}# 存放“副作用”标记（destructive 是否已生效）
-    }
     @classmethod
     def _ensure_structure(cls):
-        """防止测试或旧代码直接替换 _data 后缺失标准命名空间。"""
-        if not isinstance(cls._data, dict):
-            cls._data = {}
+        """解析当前 store，并保留标准命名空间的原有修复行为。"""
+        runtime_context = get_runtime_context()
+        if not isinstance(runtime_context.data, dict):
+            runtime_context.data = {}
 
         for namespace in cls._NAMESPACES:
-            value = cls._data.get(namespace)
+            value = runtime_context.data.get(namespace)
             if not isinstance(value, dict):
-                cls._data[namespace] = {}
+                runtime_context.data[namespace] = {}
+        return runtime_context.data
 
     # （用于变量存取）
     @classmethod
     def set_variable(cls,key:str,value):
-        cls._ensure_structure()
-        cls._data["variables"][key] = value
+        data = cls._ensure_structure()
+        data["variables"][key] = value
 
     # （用于变量存取）
     @classmethod
     def get_variable(cls,key:str,default=None):
-        cls._ensure_structure()
-        return cls._data["variables"].get(key,default)
+        data = cls._ensure_structure()
+        return data["variables"].get(key,default)
     @classmethod
     def has_variable(cls, key: str) -> bool:
-        cls._ensure_structure()
-        return key in cls._data["variables"]
+        data = cls._ensure_structure()
+        return key in data["variables"]
 
     @classmethod
     def clear_variables(cls):
         """只清理运行时变量。完整测试生命周期请使用 clear()。"""
-        cls._ensure_structure()
-        cls._data["variables"] = {}
+        data = cls._ensure_structure()
+        data["variables"] = {}
 
     # ------------------------------
     # cases
@@ -89,21 +86,21 @@ class Context:
     # （用于依赖检查）
     @classmethod
     def mark_case_passed(cls, case_id):
-        cls._ensure_structure()
-        case_state = cls._data["cases"].setdefault(case_id, {})
+        data = cls._ensure_structure()
+        case_state = data["cases"].setdefault(case_id, {})
         case_state["passed"] = True
 
     @classmethod
     def mark_cleanup_targets(cls, case_id, effect_case_ids):
-        cls._ensure_structure()
-        case_state = cls._data["cases"].setdefault(case_id, {})
+        data = cls._ensure_structure()
+        case_state = data["cases"].setdefault(case_id, {})
         case_state["cleanup_targets"] = sorted(set(effect_case_ids))
 
     @classmethod
     def get_cleanup_targets(cls, case_id):
-        cls._ensure_structure()
+        data = cls._ensure_structure()
         return list(
-            cls._data["cases"]
+            data["cases"]
             .get(case_id, {})
             .get("cleanup_targets", [])
         )
@@ -111,9 +108,9 @@ class Context:
     # （用于依赖检查）
     @classmethod
     def is_case_passed(cls, case_id):
-        cls._ensure_structure()
+        data = cls._ensure_structure()
         return (
-            cls._data["cases"]
+            data["cases"]
             .get(case_id, {})
             .get("passed", False)
         )
@@ -131,11 +128,11 @@ class Context:
             error=None,
             restore_payload=_UNSET,
     ):
-        cls._ensure_structure()
-        existing = cls._data["effects"].get(case_id, {})
+        data = cls._ensure_structure()
+        existing = data["effects"].get(case_id, {})
         if restore_payload is _UNSET and "restore_payload" in existing:
             restore_payload = existing["restore_payload"]
-        cls._data["effects"][case_id] = {
+        data["effects"][case_id] = {
             "state": state,
             # 保留 applied 布尔值，兼容现有查看方式。
             "applied": state == cls.EFFECT_APPLIED,
@@ -143,9 +140,9 @@ class Context:
             "snapshot": snapshot or {},
         }
         if restore_payload is not _UNSET:
-            cls._data["effects"][case_id]["restore_payload"] = copy.deepcopy(restore_payload)
+            data["effects"][case_id]["restore_payload"] = copy.deepcopy(restore_payload)
         if error:
-            cls._data["effects"][case_id]["error"] = str(error)
+            data["effects"][case_id]["error"] = str(error)
 
     @classmethod
     def promote_not_applied_to_unknown(cls, case_id, error):
@@ -168,8 +165,8 @@ class Context:
 
     @classmethod
     def mark_effect_restored(cls, case_id, rollback_case_id=None):
-        cls._ensure_structure()
-        effect = cls._data["effects"].get(case_id)
+        data = cls._ensure_structure()
+        effect = data["effects"].get(case_id)
         if not effect:
             return
 
@@ -186,8 +183,8 @@ class Context:
         rollback_case_id=None,
         error=None,
     ):
-        cls._ensure_structure()
-        effect = cls._data["effects"].get(case_id)
+        data = cls._ensure_structure()
+        effect = data["effects"].get(case_id)
         if not effect:
             return
 
@@ -204,13 +201,13 @@ class Context:
     @classmethod
     def has_effect(cls, case_id: str):
         """兼容旧语义：存在 effect 记录即返回 True。"""
-        cls._ensure_structure()
-        return case_id in cls._data["effects"]
+        data = cls._ensure_structure()
+        return case_id in data["effects"]
 
     @classmethod
     def get_effect(cls, case_id):
-        cls._ensure_structure()
-        return cls._data["effects"].get(case_id)
+        data = cls._ensure_structure()
+        return data["effects"].get(case_id)
 
     @classmethod
     def get_effect_state(cls, case_id):
@@ -231,7 +228,7 @@ class Context:
     # ------------------------------
     @classmethod
     def clear(cls):
-        cls._data={
+        get_runtime_context().data={
             "variables": {},# 存放 {{xxx}} 变量
             "cases": {},# 存放用例执行状态（case_passed）
             "effects": {} # 存放“副作用”标记（destructive 是否已生效）
@@ -239,27 +236,27 @@ class Context:
 
     @classmethod
     def all(cls):
-        cls._ensure_structure()
-        return copy.deepcopy(cls._data)
+        data = cls._ensure_structure()
+        return copy.deepcopy(data)
 
     @classmethod
     def snapshot(cls):
-        cls._ensure_structure()
+        data = cls._ensure_structure()
         return {
             "size": sum(
-                len(cls._data[namespace])
+                len(data[namespace])
                 for namespace in cls._NAMESPACES
             ),
-            "data": copy.deepcopy(cls._data),
+            "data": copy.deepcopy(data),
         }
 
     # 兼容当前 Extractor / VariableResolver 的旧接口。
     # Context V2 的 variables 真正迁移会单独做版本，避免本次 Effect 改造范围过大。
     @classmethod
     def set(cls, key: str, value):
-        # cls._data[key] = value
+        # data[key] = value
         cls.set_variable(key, value)
     @classmethod
     def get(cls, key: str, default=None):
-        # return cls._data.get(key, default)
+        # return data.get(key, default)
         return cls.get_variable(key, default)

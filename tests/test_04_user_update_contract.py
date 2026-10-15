@@ -15,6 +15,7 @@ from wizbank_api_test.core.case_loader import CaseLoader
 from wizbank_api_test.core.case_selector import CaseSelector
 from wizbank_api_test.core.case_validator import CaseValidator
 from wizbank_api_test.core.lifecycle_runner import LifecycleRunner
+from wizbank_api_test.core.runtime_context import RuntimeContext
 
 ROOT = Path(__file__).resolve().parents[1]
 CASE_DIR = ROOT / "data" / "cases"
@@ -44,6 +45,26 @@ EXECUTION_CASES = [
     and case.get("id") not in MANAGED_CHILDREN
 ]
 EXECUTION_IDS = [case["id"] for case in EXECUTION_CASES]
+
+
+@pytest.fixture(scope="module")
+def workflow_runtime_contexts():
+    """Contract workflows own contexts independently of the generic suite."""
+    contexts = {}
+    try:
+        yield contexts
+    finally:
+        contexts.clear()
+
+
+@pytest.fixture
+def runtime_context(request, workflow_runtime_contexts):
+    """The default binding fixture activates this item's workflow context."""
+    case_id = request.node.callspec.params["case_id"]
+    group_id = CaseSelector.build_execution_groups(ALL_CASES)[case_id]
+    if group_id not in workflow_runtime_contexts:
+        workflow_runtime_contexts[group_id] = RuntimeContext()
+    return workflow_runtime_contexts[group_id]
 
 
 class TestUserUpdateContract:

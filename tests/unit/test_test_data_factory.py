@@ -7,7 +7,7 @@ from wizbank_api_test.core.variable_resolver import VariableResolver
 
 
 @pytest.fixture(autouse=True)
-def reset_context():
+def reset_context(bind_context):
     Context.clear()
     yield
     Context.clear()

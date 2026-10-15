@@ -83,7 +83,7 @@ class _OfflineAdapter(BaseAdapter):
 
 
 @pytest.fixture(autouse=True)
-def _offline_netrc_environment(tmp_path, monkeypatch):
+def _offline_netrc_environment(tmp_path, monkeypatch, bind_context):
     netrc_file = tmp_path / "synthetic.netrc"
     netrc_file.write_text(
         "".join(

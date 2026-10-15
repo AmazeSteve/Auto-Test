@@ -174,6 +174,7 @@ class CaseValidator:
         errors.extend(cls._validate_depends_on_exists(cases))
         errors.extend(cls._validate_self_dependency(cases))
         errors.extend(cls._validate_cycle_dependency(cases))
+        errors.extend(cls._validate_dependency_order(cases))
         errors.extend(cls._validate_body_conflict(cases))
         errors.extend(cls._validate_get_body(cases))
         errors.extend(cls._validate_auth(cases))
@@ -383,6 +384,34 @@ class CaseValidator:
 
         for case_id in case_map:
             errors.extend(visit(case_id, set(), visited))
+
+        return errors
+
+    @classmethod
+    def _validate_dependency_order(cls, cases: list):
+        """Require every existing dependency to precede its consumer by order."""
+        errors = []
+        case_map = {case.get("id"): case for case in cases if case.get("id")}
+
+        for case in cases:
+            case_id = case.get("id", "UNKNOWN")
+            order = case.get("order", 9999)
+            if not isinstance(order, int):
+                continue
+            for dep_id in cls._normalize_depends(case.get("depends_on")):
+                dependency = case_map.get(dep_id)
+                # Existing validators own missing references, self-dependencies
+                # and invalid order types; do not repeat their diagnostics.
+                if dependency is None or dep_id == case_id:
+                    continue
+                dependency_order = dependency.get("order", 9999)
+                if not isinstance(dependency_order, int):
+                    continue
+                if dependency_order >= order:
+                    errors.append(
+                        f"{case_id}: depends_on requires order({dep_id}) < "
+                        f"order({case_id}), 当前={dependency_order} >= {order}"
+                    )
 
         return errors
 

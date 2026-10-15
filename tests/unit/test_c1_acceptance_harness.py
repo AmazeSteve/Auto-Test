@@ -35,7 +35,7 @@ def request_stub(destructive=True, c1=True):
 
 
 @pytest.fixture(autouse=True)
-def offline(monkeypatch):
+def offline(monkeypatch, bind_context):
     old_registry = EndpointRegistry._instance
     EndpointRegistry._instance = None
     Context.clear()

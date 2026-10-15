@@ -43,7 +43,7 @@ class FakeClient:
 
 
 @pytest.fixture()
-def loaded_cases():
+def loaded_cases(bind_context):
     old_instance = EndpointRegistry._instance
     EndpointRegistry._instance = None
 

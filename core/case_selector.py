@@ -33,6 +33,47 @@ class CaseSelector:
         raise TypeError(f"depends_on 类型不支持:{type(depends_on)}")
 
     @classmethod
+    def build_execution_groups(cls, cases: list) -> dict:
+        """Map validated cases to deterministic runtime-state ownership groups.
+
+        Dependency and lifecycle edges are undirected only for ownership. This
+        does not reorder cases or change their directed dependency contracts.
+        """
+        case_map = cls.build_case_map(cases)
+        adjacency = {case_id: set() for case_id in case_map}
+
+        for case_id, case in case_map.items():
+            linked_ids = cls.normalize_depends(case.get("depends_on"))
+            lifecycle = case.get("lifecycle")
+            if isinstance(lifecycle, dict):
+                linked_ids = linked_ids + [
+                    lifecycle.get(role)
+                    for role in ("verify", "rollback", "verify_rollback")
+                ]
+            for linked_id in linked_ids:
+                if linked_id in case_map:
+                    adjacency[case_id].add(linked_id)
+                    adjacency[linked_id].add(case_id)
+
+        ordered_ids = sorted(
+            case_map,
+            key=lambda case_id: (case_map[case_id].get("order", 9999), case_id),
+        )
+        groups = {}
+        for group_id in ordered_ids:
+            if group_id in groups:
+                continue
+            pending = [group_id]
+            while pending:
+                case_id = pending.pop()
+                if case_id in groups:
+                    continue
+                groups[case_id] = group_id
+                pending.extend(adjacency[case_id] - groups.keys())
+
+        return {case_id: groups[case_id] for case_id in ordered_ids}
+
+    @classmethod
     def collect_dependency_ids(cls,case: dict, case_map: dict, collected=None) -> set:
         """
         递归收集某个用例的所有依赖 ID（包括间接依赖）

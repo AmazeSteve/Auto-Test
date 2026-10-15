@@ -1,11 +1,14 @@
 """Workflow ownership using the real YAML entrypoint fixtures and runners."""
 
 import json
+import os
 import subprocess
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import wizbank_api_test
 
 from wizbank_api_test.core.context import Context
 from wizbank_api_test.core.runtime_context import bind_runtime_context
@@ -209,8 +212,15 @@ def test_real_pytest_items_share_dependency_state_and_isolate_other_groups(tmp_p
     command = [sys.executable, "-m", "pytest", "-c", str(config), str(test_file), "-q"]
     if kind == "contract":
         command += ["--tag", "update_contract"]
+    env = os.environ.copy()
+    project_parent = Path(__file__).resolve().parents[3]
+    # Preserve the import alias when the checkout directory has a different name.
+    package_parent = Path(next(iter(wizbank_api_test.__path__))).parent
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, [
+        str(package_parent), str(project_parent), env.get("PYTHONPATH", ""),
+    ]))
     completed = subprocess.run(
-        command, cwd=tmp_path, capture_output=True, text=True, timeout=60,
+        command, cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "3 passed" in completed.stdout

@@ -124,3 +124,22 @@
   auth: admin
   headers:
     Content-Type: application/x-www-form-urlencoded
+
+# ============================================================
+# 用户访问控制
+# ============================================================
+- id: EP_USER_AC_ROLE_FUNCTION_BY_FTN_EXT_ID
+  name: 查询角色功能权限
+  module: 用户管理/访问控制
+  host: Host-be
+  method: GET
+  path: /app/v2/admin/user/acRole/acRoleFunction/ByFtnExtId
+  auth: admin
+
+- id: EP_USER_AC_ENTITY_ROLE_BY_ENT_ID
+  name: 查询用户角色关系
+  module: 用户管理/访问控制
+  host: Host-be
+  method: GET
+  path: /app/v2/admin/user/acRole/acEntityRole/ByEntId
+  auth: admin

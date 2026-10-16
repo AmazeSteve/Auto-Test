@@ -5,6 +5,20 @@ import pytest
 
 from wizbank_api_test.core.case_loader import CaseLoader
 from wizbank_api_test.core.case_validator import CaseValidator
+from wizbank_api_test.core.endpoint_registry import EndpointRegistry
+
+
+@pytest.fixture(scope="module", autouse=True)
+def initialized_endpoint_registry():
+    previous = EndpointRegistry._instance
+    EndpointRegistry._instance = None
+    root = Path(__file__).resolve().parents[2]
+
+    try:
+        EndpointRegistry(root / "data/endpoints")
+        yield
+    finally:
+        EndpointRegistry._instance = previous
 
 
 def case(case_id, order=9999, **fields):
@@ -106,7 +120,7 @@ def test_invalid_dependency_type_remains_existing_validator_diagnostic():
     assert str(error.value).count("depends_on 类型必须是 str 或 list") == 1
 
 
-@pytest.mark.parametrize("include_experiments,expected_count", [(False, 22), (True, 26)])
+@pytest.mark.parametrize("include_experiments,expected_count", [(False, 24), (True, 28)])
 def test_current_real_yaml_passes_complete_static_validation(include_experiments, expected_count):
     root = Path(__file__).resolve().parents[2]
     cases = CaseLoader.load_cases(root / "data/cases", root / "data/endpoints")

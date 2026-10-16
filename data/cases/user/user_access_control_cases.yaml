@@ -1,0 +1,50 @@
+- id: WB_USER_ACL_001
+  enabled: true
+  order: 63
+  endpoint: EP_USER_AC_ROLE_FUNCTION_BY_FTN_EXT_ID
+  priority: P1
+  owner: Rey
+  case_type: api
+  name: 查询当前角色是否具备指定功能权限
+  tags:
+    - readonly
+    - access-control
+    - role
+  params:
+    ftnExtId: FTN_AMD_CPT_D_LICENSE_LIST
+  validate:
+    - type: status_code
+      expected: 200
+    - type: json_path_equals
+      expression: $.code
+      expected: 200
+    - type: json_path_type
+      expression: $.data
+      expected_type: bool
+
+- id: WB_USER_ACL_002
+  enabled: true
+  order: 64
+  endpoint: EP_USER_AC_ENTITY_ROLE_BY_ENT_ID
+  depends_on:
+    - WB_USER_GROUP_004
+  priority: P1
+  owner: Rey
+  case_type: api
+  name: 查询目标用户是否具有角色关系
+  tags:
+    - readonly
+    - dependency
+    - access-control
+    - role
+  params:
+    usrEntId: "{{target_usr_ent_id}}"
+  validate:
+    - type: status_code
+      expected: 200
+    - type: json_path_equals
+      expression: $.code
+      expected: 200
+    - type: json_path_type
+      expression: $.data
+      expected_type: bool

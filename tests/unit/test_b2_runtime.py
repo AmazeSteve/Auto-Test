@@ -287,7 +287,7 @@ def test_require_change_failure_promotes_not_applied_material_to_unknown(monkeyp
     assert Context.needs_cleanup("WRITE")
 
 
-@pytest.mark.parametrize("region", ["json", "data", "files"])
+@pytest.mark.parametrize("region", ["json", "data"])
 def test_plain_request_regions_keep_variable_resolution_and_no_effect(region):
     Context.set_variable("value", "resolved")
     events = []

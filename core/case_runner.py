@@ -16,6 +16,8 @@ CaseRunner 只负责一条 Case 自己的执行：
 """
 
 import  json
+from collections.abc import Mapping
+from contextlib import nullcontext
 from copy import deepcopy
 
 import  allure
@@ -32,12 +34,37 @@ from wizbank_api_test.services.credential_provider import Credential
 from wizbank_api_test.core.context import Context
 from wizbank_api_test.core.effect_collector import EffectCollector
 from wizbank_api_test.core.effect_executor import EffectExecutor
+from wizbank_api_test.core.file_resolver import FileResolutionError, FileResolver
 from wizbank_api_test.core.extractor import Extractor
 from wizbank_api_test.core.variable_resolver import VariableResolver
 from wizbank_api_test.utils.redaction import SensitiveDataRedactor
 from wizbank_api_test.services.request_payload_resolver import RequestPayloadResolver
 
 _UNSET = object()
+
+
+class _ResolvedMultipartData(Mapping):
+    """Validated form scalars, already resolved before the frozen ApiClient.
+
+    A non-dict Mapping reaches Requests without a second DSL interpretation.
+    Its representation also remains safe for the client's existing evidence.
+    """
+
+    def __init__(self, data):
+        self._data = {key: list(value) if isinstance(value, list) else value for key, value in data.items()}
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self):
+        return len(self._data)
+
+    def __repr__(self):
+        return "<ResolvedMultipartData>"
+
 
 class CaseRunner:
     """
@@ -236,6 +263,18 @@ class CaseRunner:
 
     @classmethod
     def run(cls,case:dict,api_client_factory,credential_provider,*,apply_metadata:bool = True,depends_on=None):
+        """Keep private file descriptors out of default exception diagnostics."""
+        try:
+            return cls._run(
+                case, api_client_factory, credential_provider,
+                apply_metadata=apply_metadata, depends_on=depends_on,
+            )
+        except FileResolutionError as error:
+            case = None
+            raise FileResolutionError(str(error)) from None
+
+    @classmethod
+    def _run(cls,case:dict,api_client_factory,credential_provider,*,apply_metadata:bool = True,depends_on=None):
         """执行一条 Case，不处理跨 Case 依赖与 rollback 编排。"""
         # 获取当前case指定的Host YAML没写就默认走Host-be 写了就走指定的Host
         host_key = case.get("host", "Host-be")
@@ -269,7 +308,6 @@ class CaseRunner:
             else VariableResolver.resolve(case.get("json"))
         )
         data = VariableResolver.resolve(case.get("data"))
-        files = VariableResolver.resolve(case.get("files"))
         allow_redirects = case.get("allow_redirects", True)
 
         """
@@ -296,23 +334,46 @@ class CaseRunner:
                 raise ValueError("request_builder output target must be json")
             json_body = resolved.body
             restore_arguments = {"restore_payload": resolved.restore_payload}
+        # File references are static metadata, never runtime variables. All
+        # pre-request work finishes before the resolver opens any binary handle.
+        if "files" in case:
+            FileResolver.validate_files_spec(case["files"])
+            if case["files"]:
+                if "data" in case:
+                    FileResolver.validate_multipart_data(data)
+                    data = _ResolvedMultipartData(data)
+                FileResolver.ensure_no_content_type(getattr(api_client, "default_headers", {}), headers)
+            file_scope = FileResolver.resolve(case["files"])
+        else:
+            file_scope = nullcontext(None)
         # 运行前上下文快照
         # runtime_before = Context.snapshot()
         # ---------- 7. 发送请求 ----------
         # api_client.request 内部会自动添加 allure 步骤和附件
+        request_started = False
         try:
-            response = api_client.request(
-                method=method,
-                path=path,
-                params=params,
-                headers=headers,  # headers  已经完成变量解析
-                json=json_body,
-                data=data,
-                files=files,
-                allow_redirects=allow_redirects,
-                **({"literal_json": True} if literal_runtime_json else {}),
-            )
+            with file_scope as resolved_files:
+                if resolved_files is not None and resolved_files.evidence:
+                    allure.attach(
+                        json.dumps(resolved_files.evidence, ensure_ascii=False, indent=2),
+                        name="multipart files",
+                        attachment_type=allure.attachment_type.JSON,
+                    )
+                request_started = True
+                response = api_client.request(
+                    method=method,
+                    path=path,
+                    params=params,
+                    headers=headers,  # headers  已经完成变量解析
+                    json=json_body,
+                    data=data,
+                    files=(resolved_files.request_files if resolved_files is not None else None),
+                    allow_redirects=allow_redirects,
+                    **({"literal_json": True} if literal_runtime_json else {}),
+                )
         except Exception as exc:
+            if not request_started:
+                raise
             sensitive_values.update(auth_secret_values(evidence_headers, getattr(api_client, "session", None)))
             safe_error = sanitize_auth_exception(exc, sensitive_values)
             # destructive 请求一旦开始发送，连接级异常无法证明服务端没有生效。

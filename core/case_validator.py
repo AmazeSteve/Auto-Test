@@ -1,6 +1,6 @@
 """
 新增
- - json/data/files 互斥检测（一个请求只能有一种 body 类型）
+ - json/data/files 请求体组合检测（允许 multipart data + files）
 - GET 方法不允许配置请求体（json/data/files）
 - auth 字段必须为合法值（admin/learner/none）
 
@@ -12,10 +12,12 @@
 
 """
 from difflib import  get_close_matches
+from collections.abc import Mapping
 import re
 
 from jsonpath_ng import  parse
 from wizbank_api_test.core.endpoint_registry import EndpointRegistry
+from wizbank_api_test.core.file_resolver import FileResolver, FileResolutionError
 from wizbank_api_test.utils.test_data_factory import TestDataFactory
 from wizbank_api_test.services.request_payload_resolver import RequestPayloadResolver
 class CaseValidator:
@@ -177,6 +179,7 @@ class CaseValidator:
         errors.extend(cls._validate_dependency_order(cases))
         errors.extend(cls._validate_body_conflict(cases))
         errors.extend(cls._validate_get_body(cases))
+        errors.extend(cls._validate_files_contract(cases))
         errors.extend(cls._validate_auth(cases))
         errors.extend(cls._validate_content_type_body_match(cases))
         errors.extend(cls._validate_destructive_contract(cases))
@@ -194,6 +197,9 @@ class CaseValidator:
         # 如果有错误，统一抛出
         if errors:
             message = "\n".join(f"- {err}" for err in errors)
+            # Default pytest tracebacks render function arguments. Do not echo
+            # rejected file descriptors (which may contain private paths).
+            cases = None
             raise ValueError(f"YAML 用例静态校验失败：\n{message}")
 
     @classmethod
@@ -418,33 +424,47 @@ class CaseValidator:
     @staticmethod
     def _validate_body_conflict(cases:list):
         """
-        校验 json/data/files 是否同时配置
+        校验请求体 producer 互斥；multipart 允许 data + files。
 
-        原因：在 requests 库中，json、data、files 是互斥的。
-        若同时配置，requests 会忽略 data 只发送 json，容易造成混淆。
-        因此应在 YAML 层面禁止同时配置。
-
-        注意：此校验为阻断级错误。若特殊场景确实需要 multipart 混合字段，应使用 files + data 的专门结构，后续单独扩展。
+        request_builder / restore_payload 继续使用独占的 JSON producer 合同。
         """
         errors = []
 
         for case in cases:
             case_id = case.get("id","UNKNOWN")
 
-            has_json = "json" in case and case.get("json") is not None
-            has_data = "data" in case and case.get("data") not in (None,{})
-            has_files = "files" in case and case.get("files")  not in (None,{})
+            has_json = "json" in case
+            has_data = "data" in case
+            has_files = "files" in case
 
-            body_count = sum([has_json,has_data,has_files])
+            conflicting = has_json and (has_data or has_files)
 
             producers = [key for key in ("request_builder", "restore_payload") if key in case]
             if producers:
                 body_count = len(producers) + sum(key in case for key in ("json", "data", "files"))
+                conflicting = body_count > 1
 
-            if body_count > 1:
+            if conflicting:
                 errors.append(
                     f"{case_id}:json/data/files/request_builder/restore_payload 不允许同时配置"
                 )
+        return errors
+
+    @staticmethod
+    def _validate_files_contract(cases: list):
+        """Validate only static descriptors and multipart form shapes, never files."""
+        errors = []
+        for case in cases:
+            if "files" not in case:
+                continue
+            case_id = case.get("id", "UNKNOWN")
+            spec = case["files"]
+            try:
+                FileResolver.validate_files_spec(spec)
+                if spec and "data" in case:
+                    FileResolver.validate_multipart_data(case["data"])
+            except FileResolutionError as error:
+                errors.append(f"{case_id}.files: {error}")
         return errors
 
     @staticmethod
@@ -514,12 +534,21 @@ class CaseValidator:
         for case in cases:
             case_id = case.get("id", "UNKNOWN")
             headers = case.get("headers",{}) or {}
-            content_type = cls._get_header_value(headers,"Content-Type")
 
             has_json = "json" in case and case.get("json") is not None
             has_data = "data" in case and case.get("data") not in (None, {})
             has_files = "files" in case and case.get("files") not in (None, {})
 
+            if has_files:
+                try:
+                    FileResolver.ensure_no_content_type(headers)
+                except FileResolutionError as error:
+                    errors.append(f"{case_id}.files: {error}")
+                # Requests owns multipart Content-Type and its boundary.  Do not
+                # apply the older media-type matching rules to file producers.
+                continue
+
+            content_type = cls._get_header_value(headers,"Content-Type")
             if not content_type:
                 continue
             has_json = has_json or "request_builder" in case or "restore_payload" in case
@@ -656,6 +685,15 @@ class CaseValidator:
             if not isinstance(capture, dict):
                 errors.append(f"{case_id}: effect.capture 必须为 dict")
                 continue
+
+            # Effect multipart is outside B5.  Reject the files key itself,
+            # including empty/None values and disabled capture declarations.
+            for phase in ("before", "after"):
+                phase_config = capture.get(phase)
+                if isinstance(phase_config, Mapping) and "files" in phase_config:
+                    errors.append(
+                        f"{case_id}.effect.capture.{phase}: files is not supported"
+                    )
 
             if capture.get("enabled", True) is False:
                 continue
@@ -863,15 +901,24 @@ class CaseValidator:
         supported = TestDataFactory.supported_keys()
         pattern = re.compile(r"\{\{\$data\.([A-Za-z_][A-Za-z0-9_]*)\}\}")
 
-        def walk(value, location):
+        def walk(value, location, path=()):
             if isinstance(value, dict):
                 for key, item in value.items():
-                    walk(item, f"{location}.{key}")
+                    child_path = path + (key,)
+                    if child_path in (
+                        ("files",),
+                        ("effect", "capture", "before", "files"),
+                        ("effect", "capture", "after", "files"),
+                    ):
+                        # Static file references never enter VariableResolver
+                        # or TestDataFactory; the B5 validators own diagnostics.
+                        continue
+                    walk(item, f"{location}.{key}", child_path)
                 return
 
             if isinstance(value, list):
                 for index, item in enumerate(value):
-                    walk(item, f"{location}[{index}]")
+                    walk(item, f"{location}[{index}]", path + (index,))
                 return
 
             if not isinstance(value, str):

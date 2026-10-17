@@ -48,3 +48,52 @@
     - type: json_path_type
       expression: $.data
       expected_type: bool
+
+- id: WB_USER_ACL_003
+  enabled: true
+  order: 65
+  endpoint: EP_SERVICE_SYS_PERMISSION_STATUS
+  priority: P1
+  owner: Rey
+  case_type: api
+  name: 查询系统关闭状态功能列表
+  tags:
+    - readonly
+    - access-control
+    - permission
+    - c3
+  params:
+    status: "0"
+  validate:
+    - type: status_code
+      expected: 200
+    - type: json_path_equals
+      expression: $.code
+      expected: 200
+    - type: json_path_type
+      expression: $.data
+      expected_type: list
+
+- id: WB_USER_ACL_004
+  enabled: true
+  order: 66
+  endpoint: EP_USER_SINGLE_FUNCTION
+  priority: P1
+  owner: Rey
+  case_type: api
+  name: 查询当前角色功能列表
+  tags:
+    - readonly
+    - access-control
+    - permission
+    - current-user
+    - c3
+  validate:
+    - type: status_code
+      expected: 200
+    - type: json_path_equals
+      expression: $.code
+      expected: 200
+    - type: json_path_type
+      expression: $.result.functions
+      expected_type: list

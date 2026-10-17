@@ -144,6 +144,22 @@
   path: /app/v2/admin/user/acRole/acEntityRole/ByEntId
   auth: admin
 
+- id: EP_SERVICE_SYS_PERMISSION_STATUS
+  name: 查询系统权限状态列表
+  module: 用户管理/访问控制
+  host: Host-be
+  method: GET
+  path: /app/v2/service/sysPermission/status
+  auth: admin
+
+- id: EP_USER_SINGLE_FUNCTION
+  name: 查询当前角色功能列表
+  module: 用户管理/访问控制
+  host: Host-be
+  method: GET
+  path: /app/user/single/function
+  auth: admin
+
 # ============================================================
 # 用户权限查询
 # ============================================================

@@ -143,3 +143,24 @@
   method: GET
   path: /app/v2/admin/user/acRole/acEntityRole/ByEntId
   auth: admin
+
+# ============================================================
+# 用户权限查询
+# ============================================================
+- id: EP_USER_MANAGER_PURVIEW
+  name: 查询目标用户管理权限
+  module: 用户管理/权限
+  host: Host-be
+  method: GET
+  path: /app/v2/admin/user/user_manager/purview/{{target_usr_ent_id}}
+  auth: admin
+
+- id: EP_USER_GROUP_MAINTENANCE
+  name: 查询用户组维护权限
+  module: 用户管理/权限
+  host: Host-be
+  method: POST
+  path: /app/v2/admin/user/user_group/maintenance
+  auth: admin
+  headers:
+    Content-Type: application/x-www-form-urlencoded

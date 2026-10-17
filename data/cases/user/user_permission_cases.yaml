@@ -1,0 +1,53 @@
+- id: WB_USER_PERMISSION_001
+  enabled: true
+  order: 730
+  endpoint: EP_USER_MANAGER_PURVIEW
+  depends_on:
+    - WB_USER_GROUP_004
+  priority: P1
+  owner: Rey
+  case_type: api
+  name: 查询目标用户管理权限
+  tags:
+    - readonly
+    - dependency
+    - permission
+    - user-management
+    - c2
+  validate:
+    - type: status_code
+      expected: 200
+    - type: json_path_equals
+      expression: $.code
+      expected: 200
+    - type: json_path_type
+      expression: $.data
+      expected_type: bool
+
+- id: WB_USER_PERMISSION_002
+  enabled: true
+  order: 731
+  endpoint: EP_USER_GROUP_MAINTENANCE
+  depends_on:
+    - WB_USER_GROUP_001
+  priority: P1
+  owner: Rey
+  case_type: api
+  name: 查询目标用户组维护权限
+  tags:
+    - readonly
+    - dependency
+    - permission
+    - user-group
+    - c2
+  data:
+    usg_ent_id: "{{target_usg_ent_id}}"
+  validate:
+    - type: status_code
+      expected: 200
+    - type: json_path_equals
+      expression: $.code
+      expected: 200
+    - type: json_path_type
+      expression: $.data
+      expected_type: bool

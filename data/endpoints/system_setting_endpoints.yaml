@@ -1,0 +1,7 @@
+- id: EP_SYSTEM_SETTING_VOD_GET
+  name: 查询视频系统配置
+  module: 系统设置/视频配置
+  host: Host-be
+  method: GET
+  path: /app/v2/system/setting/vod/get
+  auth: admin

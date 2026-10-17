@@ -1,0 +1,22 @@
+- id: WB_SYSTEM_SETTING_VOD_GET_001
+  enabled: true
+  order: 67
+  endpoint: EP_SYSTEM_SETTING_VOD_GET
+  priority: P2
+  owner: Rey
+  case_type: api
+  name: 视频系统配置响应结构查询
+  tags:
+    - readonly
+    - c4
+    - system-setting
+    - vod
+  validate:
+    - type: status_code
+      expected: 200
+    - type: json_path_equals
+      expression: $.code
+      expected: 200
+    - type: json_path_type
+      expression: $.data
+      expected_type: dict

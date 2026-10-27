@@ -1,0 +1,7 @@
+- id: EP_SUBSCRIBE_REPORT_CPT_HAS_SYS_FUNCTION
+  name: 查询CPT报表系统功能开关
+  module: 报表/系统功能状态
+  host: Host-be
+  method: GET
+  path: /app/v2/report/subscribe-report/cptHasSysFunction
+  auth: admin

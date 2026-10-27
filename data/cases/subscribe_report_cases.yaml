@@ -1,0 +1,22 @@
+- id: WB_SUBSCRIBE_REPORT_CPT_HAS_SYS_FUNCTION_001
+  enabled: true
+  order: 68
+  endpoint: EP_SUBSCRIBE_REPORT_CPT_HAS_SYS_FUNCTION
+  priority: P2
+  owner: Rey
+  case_type: api
+  name: CPT报表系统功能开关响应结构查询
+  tags:
+    - readonly
+    - c5
+    - report
+    - system-capability
+  validate:
+    - type: status_code
+      expected: 200
+    - type: json_path_equals
+      expression: $.code
+      expected: 200
+    - type: json_path_type
+      expression: $.data
+      expected_type: bool

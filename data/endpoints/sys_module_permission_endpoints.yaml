@@ -1,0 +1,7 @@
+- id: EP_SYS_MODULE_PERMISSION_ENABLE_AUTHORITY
+  name: 查询系统功能权限状态字典
+  module: 系统功能权限
+  host: Host-be
+  method: GET
+  path: /app/sysModulePermission/getEnableAuthority
+  auth: admin

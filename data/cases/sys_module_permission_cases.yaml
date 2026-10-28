@@ -1,0 +1,22 @@
+- id: WB_SYS_MODULE_PERMISSION_ENABLE_AUTHORITY_001
+  enabled: true
+  order: 69
+  endpoint: EP_SYS_MODULE_PERMISSION_ENABLE_AUTHORITY
+  priority: P2
+  owner: Rey
+  case_type: api
+  name: 系统功能权限状态字典响应结构查询
+  tags:
+    - readonly
+    - c6
+    - system-permission
+    - system-capability
+  validate:
+    - type: status_code
+      expected: 200
+    - type: json_path_equals
+      expression: $.code
+      expected: 200
+    - type: json_path_type
+      expression: $.data
+      expected_type: dict

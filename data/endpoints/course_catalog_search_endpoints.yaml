@@ -1,0 +1,7 @@
+- id: EP_COURSE_CATALOG_SEARCH_MANAGE
+  name: 查询可管理课程目录分页列表
+  module: 课程目录管理
+  host: Host-be
+  method: GET
+  path: /app/v2/admin/course/course-catalog/list/search
+  auth: admin

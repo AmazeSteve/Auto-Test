@@ -1,0 +1,31 @@
+- id: WB_COURSE_CATALOG_SEARCH_MANAGE_001
+  enabled: true
+  order: 70
+  endpoint: EP_COURSE_CATALOG_SEARCH_MANAGE
+  priority: P2
+  owner: Rey
+  case_type: api
+  name: 可管理课程目录分页查询响应结构
+  tags:
+    - readonly
+    - c7
+    - course-catalog
+    - admin
+  params:
+    pageNum: 1
+    pageSize: 10
+  validate:
+    - type: status_code
+      expected: 200
+    - type: json_path_equals
+      expression: $.code
+      expected: 200
+    - type: json_path_type
+      expression: $.data
+      expected_type: dict
+    - type: json_path_type
+      expression: $.data.list
+      expected_type: list
+    - type: json_path_type
+      expression: $.data.total
+      expected_type: int

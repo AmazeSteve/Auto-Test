@@ -120,7 +120,7 @@ def test_invalid_dependency_type_remains_existing_validator_diagnostic():
     assert str(error.value).count("depends_on 类型必须是 str 或 list") == 1
 
 
-@pytest.mark.parametrize("include_experiments,expected_count", [(False, 31), (True, 35)])
+@pytest.mark.parametrize("include_experiments,expected_count", [(False, 32), (True, 36)])
 def test_current_real_yaml_passes_complete_static_validation(include_experiments, expected_count):
     root = Path(__file__).resolve().parents[2]
     cases = CaseLoader.load_cases(root / "data/cases", root / "data/endpoints")

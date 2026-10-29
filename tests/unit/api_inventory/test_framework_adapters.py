@@ -29,13 +29,13 @@ def _write(path, records):
 def test_actual_framework_counts_and_registered_api_case_utilization():
     registry = scan_registry(REPO_ROOT)
     cases = scan_cases(REPO_ROOT, registry.records)
-    assert registry.counts == {"registry_definitions": 22}
-    assert cases.counts == {"enabled_cases": 31, "disabled_cases": 2}
+    assert registry.counts == {"registry_definitions": 23}
+    assert cases.counts == {"enabled_cases": 32, "disabled_cases": 2}
     assert not registry.issues
     assert not cases.issues
     registered = {record["api_uid"] for record in registry.records}
     covered = {record["api_uid"] for record in cases.records if record["enabled"]}
-    assert len(registered) == 22
+    assert len(registered) == 23
     assert registered <= covered
     assert len(registered & covered) / len(registered) == 1
     update = next(record for record in registry.records if record["endpoint_id"] == "EP_USER_UPDATE")
